@@ -1,0 +1,54 @@
+You are an expert resume analyst. Your task is to analyze the following job description and extract the section defining the job qualifications. Additionally examine this section and create a list of keywords that would be used by an ATS system
+
+JOB DESCRIPTION:
+{job_desc}
+
+
+INSTRUCTIONS:
+1. Scan through the entire job description and extract the section where the job qualification and requirements are defined
+   - Be sure to include additional sections that contain desired skills or wanted but not required experience/skills
+   - Here is a list of commonly used labels used as a title for the qualification section:
+        - Minimum requirements for the role
+        - Minimum Qualifications
+        - Basic qualifications
+        - Qualifications
+        - Technical Requirements
+        - Requirements
+        - Required
+        - Required Qualifications
+        - Required skills
+        - Required Technical Skills
+        - Must haves
+        - What you’ll need
+        - What You’ll Bring
+        - What We Look For
+        - What We're Looking For
+        - What You Bring To The Table
+        - What you bring to the role
+        - The right candidate will have
+        - Who you are
+        - You Have
+        - Your Experience
+        - Ideal Background
+
+2. Extract all relevant keywords and skills from job posting qualifications section, the same as an ATS (Applicant Tracking Systems) would
+   - Technical skills
+   - Software/tools
+   - Methodologies
+   - Certifications
+   - Industry-specific terms
+   - Soft skills
+   - Do not include keywords that consist of a single letter
+   - Do not select part of a word. Keywords must consist of at a minimum the full word and can span multiple adjoining words.
+
+
+RESPONSE FORMAT:
+Respond ONLY with valid JSON in the following structure, that can be easily directly parsed (no additional text or explanation):
+
+{
+    "job_qualification": "",
+    "keywords": ["keyword1", "keyword2", "keyword3"]
+}
+
+Ensure your response is valid JSON that can be parsed directly.
+
