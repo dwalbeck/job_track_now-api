@@ -18,12 +18,16 @@ class PersonalBase(BaseModel):
     state: Optional[str] = None
     zip: Optional[str] = None
     country: Optional[str] = None
+    login: Optional[str] = None
+    passwd: Optional[str] = None
     no_response_week: Optional[int] = None
+    default_llm: Optional[str] = None
     resume_extract_llm: Optional[str] = None
     job_extract_llm: Optional[str] = None
     rewrite_llm: Optional[str] = None
     cover_llm: Optional[str] = None
     company_llm: Optional[str] = None
+    tools_llm: Optional[str] = None
     openai_api_key: Optional[str] = None
     tinymce_api_key: Optional[str] = None
     convertapi_key: Optional[str] = None
