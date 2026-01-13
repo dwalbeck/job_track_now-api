@@ -35,15 +35,16 @@ class AiAgent:
 
 		# Now set instance variables from settings (using DB values if they were loaded)
 		self.api_key = settings.openai_api_key
-		self.model = settings.ai_model
 		self.project = settings.openai_project
 
 		# Set LLM models from config (these can be different for each AI operation)
+		self.default_llm = settings.default_llm
 		self.resume_extract_llm = settings.resume_extract_llm
 		self.job_extract_llm = settings.job_extract_llm
 		self.rewrite_llm = settings.rewrite_llm
 		self.cover_llm = settings.cover_llm
 		self.company_llm = settings.company_llm
+		self.tools_llm = settings.tools_llm
 
 		# Initialize OpenAI client with timeout
 		client_kwargs = {
@@ -561,7 +562,7 @@ class AiAgent:
 
 		# Make API call to OpenAI
 		response = self.client.chat.completions.create(
-			model=self.model,
+			model=self.default_llm,
 			messages=[
 				{"role": "system", "content": "Expert HTML developer and diff analyzer. You convert markdown to HTML matching existing styling and identify text content differences in structured JSON format."},
 				{"role": "user", "content": prompt}
@@ -873,7 +874,7 @@ class AiAgent:
 
 			# Make API call to OpenAI
 			response = self.client.chat.completions.create(
-				model=self.model,
+				model=self.default_llm,
 				messages=[
 					{"role": "system", "content": "Expert resume coach. You analyze resumes and provide actionable improvement suggestions in JSON format."},
 					{"role": "user", "content": prompt}
@@ -1137,7 +1138,7 @@ class AiAgent:
 
 		# Make API call to OpenAI
 		response = self.client.chat.completions.create(
-			model=self.model,
+			model=self.tools_llm,
 			messages=[
 				{"role": "system",
 				 "content": "Expert resume coach. You use the job description and resume content to write a purpose built elevator pitch"},
@@ -1169,7 +1170,7 @@ class AiAgent:
 
 		# Make API call to OpenAI
 		response = self.client.chat.completions.create(
-			model=self.model,
+			model=self.tools_llm,
 			messages=[
 				{"role": "system",
 				 "content": "Expert writer and editor. You rewrite text to improve clarity, grammar, and professionalism while maintaining the original meaning."},

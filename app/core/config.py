@@ -41,16 +41,17 @@ class Settings(BaseSettings):
 	allowed_origins: Union[List[str], str] = "*"
 
 	# AI Configuration
-	ai_model: str = "gpt-4.1-mini"
 	openai_api_key: str = ""
 	openai_project: str = ""
 
 	# LLM Settings from database (defaults)
+	default_llm: str = "gpt-4.1-mini"
 	resume_extract_llm: str = "gpt-5.2"
 	job_extract_llm: str = "gpt-4.1-mini"
 	rewrite_llm: str = "gpt-4.1-mini"
 	cover_llm: str = "gpt-4.1-mini"
 	company_llm: str = "gpt-4.1-mini"
+	tools_llm: str = "gpt-4.1-mini"
 
 	def get_allowed_origins(self) -> List[str]:
 		if isinstance(self.allowed_origins, str):
@@ -71,13 +72,15 @@ class Settings(BaseSettings):
 		from sqlalchemy import text
 		try:
 			query = text("""
-				SELECT job_extract_llm, rewrite_llm, cover_llm, resume_extract_llm, company_llm, openai_api_key
+				SELECT default_llm, job_extract_llm, rewrite_llm, cover_llm, resume_extract_llm, company_llm, tools_llm, openai_api_key
 				FROM personal
 				LIMIT 1
 			""")
 			result = db.execute(query).first()
 
 			if result:
+				if result.default_llm:
+					self.default_llm = result.default_llm
 				if result.job_extract_llm:
 					self.job_extract_llm = result.job_extract_llm
 				if result.rewrite_llm:
@@ -88,6 +91,8 @@ class Settings(BaseSettings):
 					self.resume_extract_llm = result.resume_extract_llm
 				if result.company_llm:
 					self.company_llm = result.company_llm
+				if result.tools_llm:
+					self.tools_llm = result.tools_llm
 				if result.openai_api_key:
 					self.openai_api_key = result.openai_api_key
 		except Exception:

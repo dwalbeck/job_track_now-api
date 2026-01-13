@@ -39,8 +39,6 @@ Thumbs.db
 # Logs
 *.log
 
-# Environment variables
-.env.example
 
 # Testing
 .pytest_cache/
