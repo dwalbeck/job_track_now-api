@@ -49,6 +49,6 @@ def wait_for_db():
 if __name__ == "__main__":
     if wait_for_db():
         print("🚀 Starting application...")
-        os.system("uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload")
+        os.system("uvicorn app.main:app --host 0.0.0.0 --port 7080 --reload")
     else:
         exit(1)

@@ -1,0 +1,40 @@
+name: Job Track Now
+
+concurrency: production
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v6.0.1
+
+      - name: copy files to web server
+        uses: appleboy/scp-action@v1
+        with:
+          host: "54.237.75.43"
+          username: "deploy"
+          key: ${{secrets.SSH_PRIVATE_KEY}}
+          port: "22"
+          source: "*"
+          target: "/var/www/job_api/"
+
+      - name: build packages start API
+        uses: fifsky/ssh-action@master
+        with:
+          command: |
+            cd /var/www/job_api
+            source venv/bin/activate
+            pip install -r requirements.txt
+            sh -c ./start.sh
+          host: 54.237.75.43
+          port: 22
+          user: deploy
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+

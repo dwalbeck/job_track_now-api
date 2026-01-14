@@ -5,8 +5,8 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .core.config import settings
-from .api import jobs, contacts, calendar, notes, resume, convert, personal, letter, files, reminder, export, process, company, openai_api, tools
-from .middleware import LoggingMiddleware
+from .api import jobs, contacts, calendar, notes, resume, convert, personal, letter, files, reminder, export, process, company, openai_api, tools, oauth
+from .middleware import LoggingMiddleware, JWTAuthMiddleware
 from .utils.logger import logger
 
 app = FastAPI(
@@ -107,7 +107,27 @@ app.add_middleware(
 # Add logging middleware (must be added after CORS for proper request/response logging)
 app.add_middleware(LoggingMiddleware)
 
+# Add JWT authentication middleware (validates tokens on all requests except excluded paths)
+# Excluded paths: OAuth endpoints, health check, root, API docs
+app.add_middleware(
+    JWTAuthMiddleware,
+    excluded_paths=[
+        "/v1/authorize",      # OAuth authorization endpoint
+        "/v1/login",          # OAuth login endpoint
+        "/v1/token",          # OAuth token exchange endpoint
+        "/health",            # Health check endpoint
+        "/",                  # Root endpoint
+        "/docs",              # API documentation
+        "/redoc",             # Alternative API documentation
+        "/openapi.json"       # OpenAPI schema
+    ]
+)
+
 # Include routers
+# OAuth routes (no authentication required)
+app.include_router(oauth.router, prefix="/v1", tags=["oauth"])
+
+# Protected routes
 app.include_router(calendar.router, prefix="/v1", tags=["calendar"])
 app.include_router(company.router, prefix="/v1", tags=["company"])
 app.include_router(contacts.router, prefix="/v1", tags=["contacts"])
