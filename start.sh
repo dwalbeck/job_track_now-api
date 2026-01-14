@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Start nginx in the background
-nginx
+sudo /usr/sbin/service nginx restart
 
 # Wait a moment for nginx to start
 sleep 2

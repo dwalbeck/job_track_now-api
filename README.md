@@ -1,6 +1,6 @@
 # Job Track Now - Backend API
 
-A FastAPI-based backend service for the Job Tracker application, which is a complete tool for organizing 
+A FastAPI-based backend service for the Job Track Now application, which is a complete tool for organizing 
 job submissions, interview appointments, contacts, notes and will customize your resume based on the job 
 posting information.
 
