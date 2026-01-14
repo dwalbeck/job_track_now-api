@@ -32,7 +32,7 @@ jobs:
             source venv/bin/activate
             pip install -r requirements.txt
             lsof -t -i:7080 | xargs kill -9
-            python3 -m uvicorn app.main:app --host 0.0.0.0 --port 7080 --workers 4 --timeout-graceful-shutdown 200 --timeout-keep-alive 200 &
+            sh -c ./start.sh &
           host: 54.237.75.43
           port: 22
           user: deploy
