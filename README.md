@@ -15,6 +15,7 @@ posting information.
 - **File Conversions**: Handles docx, odt, pdf, markdown and HTML formats
 - **AI Agent Requests**: For performing resume rewrites, data extraction, and recommendations
 - **Exportable Data**: All data can be exported
+- **OAuth2 security** authentication and validation using JWT tokens
 
 ## Setup
 
