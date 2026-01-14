@@ -31,8 +31,7 @@ jobs:
             cd /var/www/job_api
             source venv/bin/activate
             pip install -r requirements.txt
-            lsof -t -i:7080 | xargs kill -9
-            sh -c ./start.sh &
+            sh -c ./start.sh
           host: 54.237.75.43
           port: 22
           user: deploy
