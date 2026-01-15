@@ -17,7 +17,7 @@ jobs:
       - name: copy files to web server
         uses: appleboy/scp-action@v1
         with:
-          host: "54.237.75.43"
+          host: "54.208.82.135"
           username: "deploy"
           key: ${{secrets.SSH_PRIVATE_KEY}}
           port: "22"
@@ -31,7 +31,7 @@ jobs:
             cd /var/www/job_api
             source venv/bin/activate
             pip install -r requirements.txt
-          host: 54.237.75.43
+          host: 54.208.82.135
           port: 22
           user: deploy
           key: ${{ secrets.SSH_PRIVATE_KEY }}
