@@ -1,0 +1,42 @@
+[Unit]
+Description=Job Track Now API Service
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=notify
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/job_api
+Environment="PATH=/var/www/job_api/venv/bin"
+Environment="PYTHONPATH=/var/www/job_api"
+
+# Kill any existing process on port 7080 before starting
+ExecStartPre=/bin/sh -c 'lsof -t -i:7080 | xargs -r kill -9 2>/dev/null || true'
+ExecStartPre=/bin/sleep 2
+
+# Start uvicorn
+ExecStart=/var/www/job_api/venv/bin/python3 -m uvicorn app.main:app \
+    --host 0.0.0.0 \
+    --port 7080 \
+    --workers 4 \
+    --timeout-graceful-shutdown 200 \
+    --timeout-keep-alive 200
+
+# Restart policy
+Restart=always
+RestartSec=10
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Logging
+StandardOutput=append:/var/log/jobtracknow-api.log
+StandardError=append:/var/log/jobtracknow-api-error.log
+
+# Security hardening (optional)
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
