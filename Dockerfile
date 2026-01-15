@@ -31,18 +31,22 @@ RUN apt-get update \
         shared-mime-info \
         libcairo2 \
         libpangoft2-1.0-0 \
+        lsof \
         nginx \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better Docker layer caching
 COPY requirements.txt .
-COPY ./docker/* /etc/nginx/sites-available/
+COPY ./docker/nginx/api.jobtracknow.com.conf /etc/nginx/sites-available/api.jobtracknow.com.conf
+COPY ./docker/nginx/api.jobtracknow.com-ssl.conf /etc/nginx/sites-available/api.jobtracknow.com-ssl.conf
+COPY ./docker/ssl/* /etc/nginx/ssl/
 
 # Install Python dependencies
 #RUN pip install --no-cache-dir --upgrade pip \
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir git+https://github.com/dfop02/html4docx.git@1.1.1
 RUN ln -s /etc/nginx/sites-available/api.jobtracknow.com.conf /etc/nginx/sites-enabled/ \
+    && ln -s /etc/nginx/sites-available/api.jobtracknow.com-ssl.conf /etc/nginx/sites-enabled/ \
     && rm /etc/nginx/sites-enabled/default \
     && service nginx start
 
@@ -51,11 +55,13 @@ COPY . .
 
 # Expose port
 EXPOSE 8000
+EXPOSE 443
+EXPOSE 80
 
 # Make wait script and start script executable
-RUN chmod +x wait-for-db.py start.sh
+RUN chmod +x wait-for-db.py start-docker.sh
 
 # Run uvicorn with multiple workers for concurrent request handling
 # --workers 4: Run with 4 worker processes for parallel request processing
 # Each worker can handle requests independently, preventing blocking
-CMD ["/bin/sh", "-c", "/app/start.sh"]
+CMD ["/bin/sh", "-c", "/app/start-docker.sh"]
