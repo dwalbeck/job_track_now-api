@@ -108,20 +108,8 @@ app.add_middleware(
 app.add_middleware(LoggingMiddleware)
 
 # Add JWT authentication middleware (validates tokens on all requests except excluded paths)
-# Excluded paths: OAuth endpoints, health check, root, API docs
-app.add_middleware(
-    JWTAuthMiddleware,
-    excluded_paths=[
-        "/v1/authorize",      # OAuth authorization endpoint
-        "/v1/login",          # OAuth login endpoint
-        "/v1/token",          # OAuth token exchange endpoint
-        "/health",            # Health check endpoint
-        "/",                  # Root endpoint
-        "/docs",              # API documentation
-        "/redoc",             # Alternative API documentation
-        "/openapi.json"       # OpenAPI schema
-    ]
-)
+# Excluded paths are defined in JWTAuthMiddleware: OAuth endpoints, health check, root, API docs
+app.add_middleware(JWTAuthMiddleware)
 
 # Include routers
 # OAuth routes (no authentication required)

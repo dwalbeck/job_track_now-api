@@ -1,27 +1,28 @@
-from fastapi import Request, HTTPException, status
+from fastapi import Request, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
-from typing import List
 
 from ..utils.oauth_utils import verify_access_token
 from ..utils.logger import logger
+
+
+# Paths that don't require authentication
+EXCLUDED_PATHS = [
+    "/v1/authorize",      # OAuth authorization endpoint
+    "/v1/login",          # OAuth login endpoint
+    "/v1/token",          # OAuth token exchange endpoint
+    "/health",            # Health check endpoint
+    "/",                  # Root endpoint
+    "/docs",              # API documentation
+    "/redoc",             # Alternative API documentation
+    "/openapi.json"       # OpenAPI schema
+]
 
 
 class JWTAuthMiddleware(BaseHTTPMiddleware):
     """
     Middleware to validate JWT tokens on all requests except excluded paths
     """
-
-    def __init__(self, app, excluded_paths: List[str] = None):
-        """
-        Initialize JWT authentication middleware
-
-        Args:
-            app: FastAPI application
-            excluded_paths: List of path prefixes to exclude from authentication
-        """
-        super().__init__(app)
-        self.excluded_paths = excluded_paths or []
 
     async def dispatch(self, request: Request, call_next):
         """
@@ -38,7 +39,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         # Exclude authentication for specific paths
-        for excluded_path in self.excluded_paths:
+        for excluded_path in EXCLUDED_PATHS:
             if path.startswith(excluded_path):
                 logger.debug(f"Skipping JWT validation for excluded path", path=path)
                 return await call_next(request)
