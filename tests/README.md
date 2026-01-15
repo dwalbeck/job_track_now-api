@@ -1,6 +1,6 @@
-# Job Tracker Backend Tests
+# Job Track Now Backend Tests
 
-This directory contains unit tests for the Job Tracker backend application.
+This directory contains unit tests for the Job Track Now backend application.
 
 ## Running Tests
 

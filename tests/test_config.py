@@ -26,7 +26,7 @@ class TestSettingsDefaults:
 
         settings = Settings()
 
-        assert settings.app_name == "Job Tracker"
+        assert settings.app_name == "Job Track Now API"
 
     @patch.dict(os.environ, {
         "DATABASE_URL": "postgresql://test:test@localhost/test",

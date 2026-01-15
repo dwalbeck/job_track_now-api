@@ -12,7 +12,7 @@ class TestMainApp:
     def test_app_exists(self, client):
         """Test that FastAPI app is created."""
         assert client.app is not None
-        assert client.app.title == "Job Tracker"
+        assert client.app.title == "Job Track Now API"
 
     def test_app_has_cors_middleware(self, client):
         """Test that CORS middleware is configured."""
@@ -40,7 +40,7 @@ class TestRootEndpoint:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["message"] == "Job Tracker API"
+        assert data["message"] == "Job Track Now API"
         assert "version" in data
 
     def test_root_endpoint_logs_access(self, client):
@@ -382,7 +382,7 @@ class TestAppMetadata:
 
     def test_app_title(self, client):
         """Test application title is set correctly."""
-        assert client.app.title == "Job Tracker"
+        assert client.app.title == "Job Track Now"
 
     def test_app_version_exists(self, client):
         """Test application version is set."""

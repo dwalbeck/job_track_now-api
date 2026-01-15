@@ -6,7 +6,7 @@ from ..core.config import settings
 
 
 class APILogger:
-    """Centralized logging utility for the Job Tracker API"""
+    """Centralized logging utility for the Job Track Now API"""
 
     _instance = None
     _logger = None
@@ -19,7 +19,7 @@ class APILogger:
 
     def _setup_logger(self):
         """Configure the logger with file and console handlers"""
-        self._logger = logging.getLogger('job_tracker_api')
+        self._logger = logging.getLogger('job_track_now_api')
 
         # Convert log level string to logging constant
         log_level = getattr(logging, settings.log_level.upper(), logging.DEBUG)
