@@ -31,6 +31,7 @@ jobs:
             cd /var/www/job_api
             source venv/bin/activate
             pip install -r requirements.txt
+            sudo /usr/bin/systemctl restart jobtracknow-api.service
           host: 54.208.82.135
           port: 22
           user: deploy

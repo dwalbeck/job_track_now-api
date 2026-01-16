@@ -5,15 +5,16 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from jose import jwt, JWTError
+from sqlalchemy import text
+from ..core.database import SessionLocal
 from ..utils.logger import logger
 
 
-# In-memory storage for authorization codes and their associated data
-# In production, this should use Redis or a database
-_auth_codes: Dict[str, Dict[str, Any]] = {}
-
 # JWT configuration
-SECRET_KEY = secrets.token_urlsafe(32)  # Generate secure random key
+# IMPORTANT: In production, SECRET_KEY should be loaded from environment variable
+# This ensures the same key is used across all workers
+import os
+SECRET_KEY = os.getenv("JWT_SECRET_KEY", secrets.token_urlsafe(32))
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
@@ -38,7 +39,7 @@ def store_authorization_code(
     scope: str
 ) -> None:
     """
-    Store authorization code and associated data in memory
+    Store authorization code and associated data in database
 
     Args:
         code: Authorization code
@@ -49,22 +50,43 @@ def store_authorization_code(
         state: CSRF state token
         scope: Requested scope
     """
-    _auth_codes[code] = {
-        "username": username,
-        "redirect_uri": redirect_uri,
-        "code_challenge": code_challenge,
-        "code_challenge_method": code_challenge_method,
-        "state": state,
-        "scope": scope,
-        "created_at": datetime.utcnow(),
-        "used": False
-    }
-    logger.info(f"Stored authorization code", code_length=len(code), username=username)
+    db = SessionLocal()
+    try:
+        # Clean up expired codes first
+        cleanup_query = text("""
+            DELETE FROM oauth_codes
+            WHERE created_at < NOW() - INTERVAL '10 minutes'
+        """)
+        db.execute(cleanup_query)
+
+        # Insert new authorization code
+        insert_query = text("""
+            INSERT INTO oauth_codes
+            (code, username, redirect_uri, code_challenge, code_challenge_method, state, scope, created_at, used)
+            VALUES (:code, :username, :redirect_uri, :code_challenge, :code_challenge_method, :state, :scope, NOW(), FALSE)
+        """)
+        db.execute(insert_query, {
+            "code": code,
+            "username": username,
+            "redirect_uri": redirect_uri,
+            "code_challenge": code_challenge,
+            "code_challenge_method": code_challenge_method,
+            "state": state,
+            "scope": scope
+        })
+        db.commit()
+        logger.info(f"Stored authorization code", code_length=len(code), username=username)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to store authorization code", error=str(e))
+        raise
+    finally:
+        db.close()
 
 
 def retrieve_authorization_code(code: str) -> Optional[Dict[str, Any]]:
     """
-    Retrieve authorization code data from memory
+    Retrieve authorization code data from database
 
     Args:
         code: Authorization code
@@ -72,24 +94,52 @@ def retrieve_authorization_code(code: str) -> Optional[Dict[str, Any]]:
     Returns:
         Dict containing code data, or None if not found
     """
-    code_data = _auth_codes.get(code)
+    db = SessionLocal()
+    try:
+        # Retrieve code from database
+        query = text("""
+            SELECT code, username, redirect_uri, code_challenge, code_challenge_method,
+                   state, scope, created_at, used, used_at
+            FROM oauth_codes
+            WHERE code = :code
+        """)
+        result = db.execute(query, {"code": code}).first()
 
-    if not code_data:
-        logger.warning(f"Authorization code not found", code_exists=False)
+        if not result:
+            logger.warning(f"Authorization code not found", code_exists=False)
+            return None
+
+        # Convert to dict
+        code_data = {
+            "code": result[0],
+            "username": result[1],
+            "redirect_uri": result[2],
+            "code_challenge": result[3],
+            "code_challenge_method": result[4],
+            "state": result[5],
+            "scope": result[6],
+            "created_at": result[7],
+            "used": result[8],
+            "used_at": result[9]
+        }
+
+        # Check if code has already been used
+        if code_data.get("used"):
+            logger.warning(f"Authorization code already used", code_reused=True)
+            return None
+
+        # Check if code has expired (codes expire after 10 minutes)
+        created_at = code_data.get("created_at")
+        if created_at and datetime.utcnow() - created_at > timedelta(minutes=10):
+            logger.warning(f"Authorization code expired", code_expired=True)
+            return None
+
+        return code_data
+    except Exception as e:
+        logger.error(f"Failed to retrieve authorization code", error=str(e))
         return None
-
-    # Check if code has already been used
-    if code_data.get("used"):
-        logger.warning(f"Authorization code already used", code_reused=True)
-        return None
-
-    # Check if code has expired (codes expire after 10 minutes)
-    created_at = code_data.get("created_at")
-    if created_at and datetime.utcnow() - created_at > timedelta(minutes=10):
-        logger.warning(f"Authorization code expired", code_expired=True)
-        return None
-
-    return code_data
+    finally:
+        db.close()
 
 
 def mark_authorization_code_used(code: str) -> None:
@@ -99,9 +149,24 @@ def mark_authorization_code_used(code: str) -> None:
     Args:
         code: Authorization code
     """
-    if code in _auth_codes:
-        _auth_codes[code]["used"] = True
-        logger.info(f"Marked authorization code as used")
+    db = SessionLocal()
+    try:
+        update_query = text("""
+            UPDATE oauth_codes
+            SET used = TRUE, used_at = NOW()
+            WHERE code = :code
+        """)
+        result = db.execute(update_query, {"code": code})
+        db.commit()
+        if result.rowcount > 0:
+            logger.info(f"Marked authorization code as used")
+        else:
+            logger.warning(f"Authorization code not found when marking as used")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to mark authorization code as used", error=str(e))
+    finally:
+        db.close()
 
 
 def verify_pkce_challenge(code_verifier: str, code_challenge: str, method: str = "S256") -> bool:
@@ -209,17 +274,21 @@ def verify_access_token(token: str) -> Optional[Dict[str, Any]]:
 
 def cleanup_expired_codes() -> None:
     """
-    Remove expired authorization codes from memory
-    Should be called periodically
+    Remove expired authorization codes from database
+    Should be called periodically or is automatically called on new code storage
     """
-    now = datetime.utcnow()
-    expired_codes = [
-        code for code, data in _auth_codes.items()
-        if data.get("created_at") and now - data["created_at"] > timedelta(minutes=10)
-    ]
-
-    for code in expired_codes:
-        del _auth_codes[code]
-
-    if expired_codes:
-        logger.info(f"Cleaned up expired codes", count=len(expired_codes))
+    db = SessionLocal()
+    try:
+        delete_query = text("""
+            DELETE FROM oauth_codes
+            WHERE created_at < NOW() - INTERVAL '10 minutes'
+        """)
+        result = db.execute(delete_query)
+        db.commit()
+        if result.rowcount > 0:
+            logger.info(f"Cleaned up expired codes", count=result.rowcount)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to cleanup expired codes", error=str(e))
+    finally:
+        db.close()
