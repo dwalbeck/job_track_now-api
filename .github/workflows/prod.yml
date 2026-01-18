@@ -17,7 +17,7 @@ jobs:
       - name: copy files to web server
         uses: appleboy/scp-action@v1
         with:
-          host: "54.208.82.135"
+          host: 18.210.17.136
           username: "deploy"
           key: ${{secrets.SSH_PRIVATE_KEY}}
           port: "22"
@@ -32,7 +32,9 @@ jobs:
             source venv/bin/activate
             pip install -r requirements.txt
             sudo /usr/bin/systemctl restart jobtracknow-api.service
-          host: 54.208.82.135
+            sleep 5
+            sudo /usr/bin/systemctl status jobtracknow-api.service
+          host: 18.210.17.136
           port: 22
           user: deploy
           key: ${{ secrets.SSH_PRIVATE_KEY }}

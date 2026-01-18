@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Kill off any previously running instance of the api
-lsof -t -i:7080 | xargs -r kill -9 2>/dev/null || true
+timeout 5 lsof -t -i:7080 | xargs -r kill -9 2>/dev/null || true
 
 # Wait a moment for port to be released
 sleep 2

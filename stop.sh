@@ -19,7 +19,7 @@ if [ -f /var/www/job_api/uvicorn.pid ]; then
     rm -f /var/www/job_api/uvicorn.pid
 else
     echo "PID file not found, attempting to kill by port..."
-    lsof -t -i:7080 | xargs -r kill -9 2>/dev/null || true
+    timeout 5 lsof -t -i:7080 | xargs -r kill -9 2>/dev/null || true
 fi
 
 echo "Uvicorn stopped"

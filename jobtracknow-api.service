@@ -12,7 +12,7 @@ Environment="PATH=/var/www/job_api/venv/bin"
 Environment="PYTHONPATH=/var/www/job_api"
 
 # Kill any existing process on port 7080 before starting
-ExecStartPre=/bin/sh -c 'lsof -t -i:7080 | xargs -r kill -9 2>/dev/null || true'
+ExecStartPre=/bin/sh -c 'timeout 5 lsof -t -i:7080 | xargs -r kill -9 2>/dev/null || true'
 ExecStartPre=/bin/sleep 2
 
 # Start uvicorn
@@ -24,6 +24,8 @@ ExecStart=/var/www/job_api/venv/bin/python3 -m uvicorn app.main:app \
     --timeout-keep-alive 200
 
 # Restart policy
+StartLimitIntervalSec=300
+StartLimitBurst=5
 Restart=always
 RestartSec=10
 KillMode=mixed
