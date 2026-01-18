@@ -14,6 +14,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.1
 
+      - name: stop systemd service
+        uses: fifsky/ssh-action@master
+        with:
+          command: |
+            sudo /usr/bin/systemctl stop jobtracknow-api.service
+          host: 54.236.27.213
+          port: 22
+          user: deploy
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+
       - name: copy files to web server
         uses: appleboy/scp-action@v1
         with:
@@ -31,9 +41,7 @@ jobs:
             cd /var/www/job_api
             source venv/bin/activate
             pip install -r requirements.txt
-            sudo /usr/bin/systemctl restart jobtracknow-api.service
-            sleep 5
-            sudo /usr/bin/systemctl status jobtracknow-api.service
+            sudo /usr/bin/systemctl start jobtracknow-api.service
           host: 54.236.27.213
           port: 22
           user: deploy
