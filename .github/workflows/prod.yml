@@ -19,6 +19,7 @@ jobs:
         with:
           command: |
             sudo /usr/bin/systemctl stop jobtracknow-api.service
+            sleep 5
           host: 54.236.27.213
           port: 22
           user: deploy
