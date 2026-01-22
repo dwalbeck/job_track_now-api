@@ -66,8 +66,13 @@ class Conversion:
         :param mimetype: File format as the file extension to use
         :return: full path and filename with extension
         """
+        import re
         filetmp = company.strip() + '-' + title.strip()
-        filename = filetmp.replace(' ', '_') + '.' + mimetype
+        # Replace spaces with underscores first
+        filetmp = filetmp.replace(' ', '_')
+        # Remove any non-alphanumeric characters except underscores and hyphens
+        filetmp = re.sub(r'[^a-zA-Z0-9_-]', '', filetmp)
+        filename = filetmp + '.' + mimetype
         return filename
 
 

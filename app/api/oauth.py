@@ -15,6 +15,7 @@ from ..utils.oauth_utils import (
     create_access_token
 )
 from ..utils.logger import logger
+from ..utils.password import verify_password
 
 
 router = APIRouter()
@@ -266,34 +267,42 @@ async def login(
     """
     logger.info(f"Login attempt", username=username)
 
-    # Authenticate user against personal table
+    # Authenticate user - first try users table, then fall back to personal table
     try:
-        query = text("""
-            SELECT login, passwd, first_name, last_name
-            FROM personal
+        first_name = None
+        last_name = None
+        authenticated = False
+        is_admin = False
+
+        # Try users table first (with hashed password)
+        users_query = text("""
+            SELECT user_id, login, passwd, first_name, last_name, is_admin
+            FROM users
             WHERE login = :username
             LIMIT 1
         """)
+        users_result = db.execute(users_query, {"username": username}).first()
 
-        result = db.execute(query, {"username": username}).first()
+        if users_result:
+            # Verify hashed password
+            if verify_password(password, users_result.passwd):
+                authenticated = True
+                first_name = users_result.first_name
+                last_name = users_result.last_name
+                is_admin = users_result.is_admin
+                logger.info(f"User authenticated via users table", username=username)
+            else:
+                logger.warning(f"Login failed - invalid password (users table)", username=username)
 
-        if not result:
-            logger.warning(f"Login failed - user not found", username=username)
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid username or password"
-            )
-
-        # Verify password (plain text comparison for now)
-        if result.passwd != password:
-            logger.warning(f"Login failed - invalid password", username=username)
+        if not authenticated:
+            logger.warning(f"Login failed - user not found or invalid password", username=username)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid username or password"
             )
 
         logger.info(f"Login successful", username=username,
-                   first_name=result.first_name, last_name=result.last_name)
+                   first_name=first_name, last_name=last_name)
 
         # Generate authorization code
         auth_code = generate_authorization_code()
@@ -306,7 +315,9 @@ async def login(
             code_challenge=code_challenge,
             code_challenge_method=code_challenge_method,
             state=state,
-            scope=scope
+            scope=scope,
+            user_id=users_result.user_id,
+            is_admin=is_admin
         )
 
         # Redirect to callback URI with authorization code
@@ -332,7 +343,8 @@ async def token(
     code_verifier: str = Form(...),
     redirect_uri: str = Form(...),
     client_id: Optional[str] = Form(None),
-    client_secret: Optional[str] = Form(None)
+    client_secret: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
 ):
     """
     OAuth2 token endpoint - exchanges authorization code for access token
@@ -394,7 +406,22 @@ async def token(
     # Generate access token
     username = code_data["username"]
     scope = code_data["scope"]
-    access_token = create_access_token(username=username, scope=scope)
+    user_id = code_data["user_id"]
+    is_admin = code_data["is_admin"]
+    first_name = code_data.get("first_name")
+    last_name = code_data.get("last_name")
+
+    # If first_name/last_name not in code_data, retrieve from users table
+    if not first_name or not last_name:
+        users_query = text("SELECT first_name, last_name FROM users WHERE user_id = :user_id")
+        users_result = db.execute(users_query, {"user_id": user_id}).first()
+        if users_result:
+            first_name = users_result.first_name
+            last_name = users_result.last_name
+        else:
+            logger.warning(f"Failed to retrieve users first and last name", user_id=user_id)
+
+    access_token = create_access_token(username=username, scope=scope, user_id=user_id, is_admin=is_admin, first_name=first_name, last_name=last_name)
 
     logger.info(f"Token issued successfully", username=username)
 

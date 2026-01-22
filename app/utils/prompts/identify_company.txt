@@ -50,6 +50,7 @@ JOB POSTING:
     - Very important to get the company logo, as it's used in recognition and verifying it's the correct company and much more
     - The company logo is generally found on the company website, usually within the website header, and most commonly near the top left of the page
     - Acceptable image formats include: png, jpg, gif, svg, webp and avif
+    - The company logo is generally also surrounded by an anchor link that points to the website main page
     - Do not use sources that are not directly owned and operated by any entity other than the company being searched
     - It is possible that the company logo is simply text of their company name, which even in this case, will generally still use a graphic image for it
     - The company logo can often be found by searching for the text "logo" (case-insensitive) matched within an IMG tag within the SRC attribute of the homepage source code   

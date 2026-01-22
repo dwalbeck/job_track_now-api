@@ -36,7 +36,9 @@ def store_authorization_code(
     code_challenge: str,
     code_challenge_method: str,
     state: str,
-    scope: str
+    scope: str,
+    user_id: int,
+    is_admin: bool
 ) -> None:
     """
     Store authorization code and associated data in database
@@ -62,8 +64,8 @@ def store_authorization_code(
         # Insert new authorization code
         insert_query = text("""
             INSERT INTO oauth_codes
-            (code, username, redirect_uri, code_challenge, code_challenge_method, state, scope, created_at, used)
-            VALUES (:code, :username, :redirect_uri, :code_challenge, :code_challenge_method, :state, :scope, NOW(), FALSE)
+            (code, username, redirect_uri, code_challenge, code_challenge_method, state, scope, created_at, used, user_id, is_admin)
+            VALUES (:code, :username, :redirect_uri, :code_challenge, :code_challenge_method, :state, :scope, NOW(), FALSE, :user_id, :is_admin)
         """)
         db.execute(insert_query, {
             "code": code,
@@ -72,7 +74,9 @@ def store_authorization_code(
             "code_challenge": code_challenge,
             "code_challenge_method": code_challenge_method,
             "state": state,
-            "scope": scope
+            "scope": scope,
+            "user_id": user_id,
+            "is_admin": is_admin
         })
         db.commit()
         logger.info(f"Stored authorization code", code_length=len(code), username=username)
@@ -96,10 +100,12 @@ def retrieve_authorization_code(code: str) -> Optional[Dict[str, Any]]:
     """
     db = SessionLocal()
     try:
-        # Retrieve code from database
+        # Retrieve code from database with expiration check in SQL
+        # This ensures consistent timezone handling by using database's NOW()
         query = text("""
             SELECT code, username, redirect_uri, code_challenge, code_challenge_method,
-                   state, scope, created_at, used, used_at
+                   state, scope, created_at, used, used_at, user_id, is_admin,
+                   (created_at < NOW() - INTERVAL '10 minutes') as is_expired
             FROM oauth_codes
             WHERE code = :code
         """)
@@ -120,7 +126,9 @@ def retrieve_authorization_code(code: str) -> Optional[Dict[str, Any]]:
             "scope": result[6],
             "created_at": result[7],
             "used": result[8],
-            "used_at": result[9]
+            "used_at": result[9],
+            "user_id": result[10],
+            "is_admin": result[11]
         }
 
         # Check if code has already been used
@@ -128,9 +136,9 @@ def retrieve_authorization_code(code: str) -> Optional[Dict[str, Any]]:
             logger.warning(f"Authorization code already used", code_reused=True)
             return None
 
-        # Check if code has expired (codes expire after 10 minutes)
-        created_at = code_data.get("created_at")
-        if created_at and datetime.utcnow() - created_at > timedelta(minutes=10):
+        # Check if code has expired (using database's calculation for timezone consistency)
+        is_expired = result[12]
+        if is_expired:
             logger.warning(f"Authorization code expired", code_expired=True)
             return None
 
@@ -200,13 +208,24 @@ def verify_pkce_challenge(code_verifier: str, code_challenge: str, method: str =
         return False
 
 
-def create_access_token(username: str, scope: str = "all") -> str:
+def create_access_token(
+    username: str,
+    scope: str = "all",
+    user_id: int = None,
+    is_admin: bool = False,
+    first_name: str = None,
+    last_name: str = None
+) -> str:
     """
     Create JWT access token
 
     Args:
         username: Username to encode in token
         scope: Token scope
+        user_id: User's database ID
+        is_admin: Whether user is an admin
+        first_name: User's first name
+        last_name: User's last name
 
     Returns:
         str: Signed JWT token
@@ -234,9 +253,15 @@ def create_access_token(username: str, scope: str = "all") -> str:
         "acr": "1",  # Authentication Context Class Reference
         "azp": "job-tracker-client",  # Authorized party
 
+        # User info claims
+        "user_id": user_id,
+        "is_admin": is_admin,
+        "first_name": first_name,
+        "last_name": last_name,
+
         # Realm and resource access
         "realm_access": {
-            "roles": ["user", "job_tracker_user"]
+            "roles": ["admin", "user", "job_tracker_user"] if is_admin else ["user", "job_tracker_user"]
         },
         "resource_access": {
             "account": {
@@ -248,7 +273,7 @@ def create_access_token(username: str, scope: str = "all") -> str:
 
     # Sign the JWT
     encoded_jwt = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-    logger.info(f"Created access token", username=username, expires=expires.isoformat())
+    logger.info(f"Created access token", username=username, user_id=user_id, is_admin=is_admin, expires=expires.isoformat())
 
     return encoded_jwt
 

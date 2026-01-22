@@ -25,8 +25,9 @@ RESUME:
 # GUIDELINES:
 
 1. **Research**
-    - Use the fields from the INPUT to correctly identify the company to research more information about.
+    - Use the fields from the INPUT to correctly identify the company to research more information about
     - Use only information that can be correctly linked and verified as being from the same company
+    - Do not fabricate any company data point, use only verifiable facts found
     - The JOB DESCRIPTION will help to identify areas of particular focus and interest
     - Use content in the RESUME to dig deeper in related areas
 
@@ -45,7 +46,8 @@ RESUME:
 
 
 3. **Report Formatting**
-    - The opening for the report should start with the company logo (if LOGO_URL is provided) and company name followed by the word "Report" centered at the top of the page
+    - The opening for the report should start with the company logo (if LOGO_URL is provided) - be sure to scale the logo to a size no larger than 64px x 64px
+    - Next to the logo should be the company name followed by the word "Report", all of which is centered at the top of the page
     - Then add a one paragraph section with sub-heading titled "Company Overview", that outlines a summary of what the company does and key points
     - Include a section that covers interesting recent news and developments. Summarize for quick reading
     - Use sub-headings identifying each section
@@ -56,8 +58,9 @@ RESUME:
     - Create a section with a few simulated pitfalls and how to recover from them if they happen
     - Close out with a section on questions that would be good to ask and things to do at the end of an interview.
     - Report background color should be white and use black text for the majority of the report
+    - Graphs can added using either CSS styling or use a Javascript library (if the later, be sure to include the loading of the library in a script tag in the head)
     - The report should be formatting in HTML using proper indenting and newlines for siblings
-    - The HTML should be complete from the opening <html> tag to the closing </html>, with any CSS styling or Javascript used included in the <head>
+    - The HTML should be complete from the opening <html> tag to the closing </html>, with any CSS styling and any Javascript used included in the <head>
     - URL's should be placed in anchor tags as HTML hyperlinks
     - The HTML report will be returned in a valid JSON object that can be directly parsed as defined below
     - Do not include any extra comments or explanations
