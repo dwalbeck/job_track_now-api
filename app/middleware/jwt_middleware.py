@@ -53,7 +53,7 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
         # Exclude authentication for specific paths
         for excluded_path in EXCLUDED_PATHS:
             if path.startswith(excluded_path):
-                logger.debug(f"Skipping JWT validation for excluded path", path=path)
+                #logger.debug(f"Skipping JWT validation for excluded path", path=path)
                 return await call_next(request)
 
         # Extract Authorization header

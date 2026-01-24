@@ -1,3 +1,4 @@
+from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -10,6 +11,7 @@ from ..core.database import get_db
 from ..core.config import settings
 from ..utils.conversion import Conversion
 from ..utils.logger import logger
+from ..middleware.auth_middleware import get_current_user
 
 router = APIRouter()
 
@@ -155,9 +157,15 @@ class Html2DocxResponse(BaseModel):
 
 
 @router.get("/convert/html2docx", response_model=Html2DocxResponse)
-async def convert_html_to_docx(job_id: int, db: Session = Depends(get_db)):
+async def convert_html_to_docx(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Performs the conversion from HTML to DOCX and returns the new filename.
+
+    Requires authentication via Bearer token.
 
     Query parameters:
     - job_id: ID of the job
@@ -165,17 +173,19 @@ async def convert_html_to_docx(job_id: int, db: Session = Depends(get_db)):
     Returns:
     - file_name: Name of the generated DOCX file
     """
-    logger.info(f"HTML to DOCX /convert/html2docx conversion requested", job_id=job_id)
+    user_id = current_user.get("user_id")
 
-    # Step 0: Retrieve first and last name
-    query = text("""SELECT p.first_name, p.last_name, j.resume_id 
-                    FROM personal p LEFT JOIN job j ON (j.job_id = :job_id)
-                    WHERE p.first_name IS NOT NULL
-                    LIMIT 1""")
-    result = db.execute(query, {"job_id": job_id}).first()
+    logger.info(f"HTML to DOCX /convert/html2docx conversion requested", job_id=job_id, user_id=user_id)
+
+    # Retrieve first and last name from users table for the authenticated user
+    query = text("""SELECT u.first_name, u.last_name, j.resume_id
+                    FROM users u LEFT JOIN job j ON (j.job_id = :job_id AND j.user_id = :user_id)
+                    WHERE u.user_id = :user_id""")
+    result = db.execute(query, {"job_id": job_id, "user_id": user_id}).first()
+
     if not result:
-        logger.error("Failed to retrieve first_name and last_name from personal")
-        raise HTTPException(status_code=404, detail="Failed to retrieve first_name and last_name from personal")
+        logger.error("Failed to retrieve user info", user_id=user_id)
+        raise HTTPException(status_code=404, detail="User not found")
 
     full_name = result.first_name + " " + result.last_name
 
@@ -205,33 +215,40 @@ async def convert_html_to_docx(job_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/file/download/resume/{file_name}")
-async def download_resume_file(file_name: str, db: Session = Depends(get_db)):
+async def download_resume_file(
+    file_name: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Download a resume file from the resume directory.
+
+    Requires authentication via Bearer token.
 
     The file is stored with company-jobtitle naming but downloaded as
     resume-firstname_lastname.extension for consistency.
 
     Args:
         file_name: Name of the file to download
+        current_user: Current user dict from JWT
         db: Database session
 
     Returns:
         FileResponse with the requested file
     """
-    logger.info(f"Resume file download requested", file_name=file_name)
+    user_id = current_user.get("user_id")
 
-    # Step 0: Retrieve first and last name
-    query = text("""SELECT first_name, last_name
-                    FROM personal
-                    WHERE first_name IS NOT NULL
-                    LIMIT 1""")
-    personal_result = db.execute(query).first()
-    if not personal_result:
-        logger.error("Failed to retrieve first_name and last_name from personal")
-        raise HTTPException(status_code=404, detail="Failed to retrieve first_name and last_name from personal")
+    logger.info(f"Resume file download requested", file_name=file_name, user_id=user_id)
 
-    full_name = personal_result.first_name + " " + personal_result.last_name
+    # Retrieve first and last name from users table for the authenticated user
+    query = text("SELECT first_name, last_name FROM users WHERE user_id = :user_id")
+    user_result = db.execute(query, {"user_id": user_id}).first()
+
+    if not user_result:
+        logger.error("Failed to retrieve user info", user_id=user_id)
+        raise HTTPException(status_code=404, detail="User not found")
+
+    full_name = user_result.first_name + " " + user_result.last_name
 
     try:
         # Construct the full file path
@@ -248,18 +265,14 @@ async def download_resume_file(file_name: str, db: Session = Depends(get_db)):
             logger.warning(f"Path is not a file", file_name=file_name, file_path=file_path)
             raise HTTPException(status_code=400, detail=f"Invalid file path: {file_name}")
 
-        # Get personal info to create download filename
-        personal_query = text("SELECT first_name, last_name FROM personal LIMIT 1")
-        personal_result = db.execute(personal_query).first()
-
         # Extract file extension
         file_extension = file_name.rsplit('.', 1)[-1] if '.' in file_name else 'docx'
 
-        # Create download filename as resume-firstname_lastname.extension
-        if personal_result and personal_result.first_name and personal_result.last_name:
-            download_filename = f"resume-{personal_result.first_name}_{personal_result.last_name}.{file_extension}"
+        # Create download filename as resume-firstname_lastname.extension using authenticated user's name
+        if user_result.first_name and user_result.last_name:
+            download_filename = f"resume-{user_result.first_name}_{user_result.last_name}.{file_extension}"
         else:
-            # Fallback to original filename if personal info not available
+            # Fallback to original filename if user info not complete
             download_filename = file_name
 
         logger.info(f"Serving resume file", file_name=file_name, download_filename=download_filename)
@@ -308,8 +321,9 @@ class ConvertFinalResponse(BaseModel):
 
 @router.post("/convert/final", response_model=ConvertFinalResponse)
 async def convert_final(
-        request: ConvertFinalRequest,
-        db: Session = Depends(get_db)
+    request: ConvertFinalRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Convert the final resume (resume_md_rewrite) to the specified output format.
@@ -324,6 +338,7 @@ async def convert_final(
 
     Args:
         request: ConvertFinalRequest with resume_id and output_format
+        current_user: Current user dict from JWT
         db: Database session
 
     Returns:
@@ -332,19 +347,20 @@ async def convert_final(
     Raises:
         HTTPException: If resume not found or conversion fails
     """
+    user_id = current_user.get("user_id")
     try:
-        logger.info(f"Converting final resume", resume_id=request.resume_id, output_format=request.output_format)
+        logger.info(f"Converting final resume", resume_id=request.resume_id, output_format=request.output_format, user_id=user_id)
 
         # Query to get resume data
         query = text("""
-                     SELECT r.file_name, rd.resume_html_rewrite, rr.file_name AS orig_file_name, rr.original_format
-                     FROM resume r
-                              JOIN resume_detail rd ON (r.resume_id = rd.resume_id)
-                              JOIN resume rr ON (r.baseline_resume_id = rr.resume_id)
-                     WHERE r.resume_id = :resume_id
-                     """)
+	         SELECT r.file_name, rd.resume_html_rewrite, rr.file_name AS orig_file_name, rr.original_format
+	         FROM resume r
+	                  JOIN resume_detail rd ON (r.resume_id = rd.resume_id)
+	                  JOIN resume rr ON (r.baseline_resume_id = rr.resume_id)
+	         WHERE r.resume_id = :resume_id AND r.user_id = :user_id
+	         """)
 
-        result = db.execute(query, {"resume_id": request.resume_id}).first()
+        result = db.execute(query, {"resume_id": request.resume_id, "user_id": user_id}).first()
 
         if not result:
             logger.error(f"Resume not found", resume_id=request.resume_id)
@@ -437,8 +453,9 @@ class ConvertFileResponse(BaseModel):
 
 @router.post("/convert/file", response_model=ConvertFileResponse)
 async def convert_file(
-        request: ConvertFileRequest,
-        db: Session = Depends(get_db)
+    request: ConvertFileRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Convert resume file using personal configuration settings.
@@ -461,6 +478,7 @@ async def convert_file(
 
     Args:
         request: ConvertFileRequest with resume_id, source_format, target_format
+        current_user: Current user dict from JWT
         db: Database session
 
     Returns:
@@ -469,9 +487,10 @@ async def convert_file(
     Raises:
         HTTPException: If resume not found or conversion fails
     """
+    user_id = current_user.get("user_id")
     try:
         logger.info(f"File conversion requested", resume_id=request.resume_id,
-                   source_format=request.source_format, target_format=request.target_format)
+                   source_format=request.source_format, target_format=request.target_format, user_id=user_id)
 
         # Normalize formats
         source_format = request.source_format.lower().strip()
@@ -481,10 +500,10 @@ async def convert_file(
         query = text("""
             SELECT r.file_name, r.original_format, r.is_baseline
             FROM resume r
-            WHERE r.resume_id = :resume_id
+            WHERE r.resume_id = :resume_id AND r.user_id = :user_id
         """)
 
-        result = db.execute(query, {"resume_id": request.resume_id}).first()
+        result = db.execute(query, {"resume_id": request.resume_id, "user_id": user_id}).first()
 
         if not result:
             logger.error(f"Resume not found", resume_id=request.resume_id)

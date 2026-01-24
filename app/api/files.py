@@ -1,17 +1,23 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 import os
 from ..core.config import settings
 from ..core.database import get_db
 from ..utils.logger import logger
 from ..utils.file_helpers import create_standardized_download_file
+from ..middleware.auth_middleware import get_current_user
 
 router = APIRouter()
 
 
 @router.get("/files/cover_letters/{file_name}")
-async def download_cover_letter(file_name: str, db: Session = Depends(get_db)):
+async def download_cover_letter(
+    file_name: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Serve a cover letter file for download with standardized naming.
 
@@ -24,7 +30,21 @@ async def download_cover_letter(file_name: str, db: Session = Depends(get_db)):
     Returns:
         FileResponse with the file using standardized naming
     """
+    user_id = current_user.get("user_id")
     try:
+        # Verify the cover letter belongs to the user
+        query = text("""
+            SELECT cover_id FROM cover_letter
+            WHERE file_name = :file_name AND user_id = :user_id
+        """)
+        result = db.execute(query, {"file_name": file_name, "user_id": user_id}).first()
+        if not result:
+            logger.warning(f"Cover letter file not found or not owned by user", file_name=file_name, user_id=user_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"File not found: {file_name}"
+            )
+
         file_path = os.path.join(settings.cover_letter_dir, file_name)
 
         if not os.path.exists(file_path):
@@ -63,7 +83,11 @@ async def download_cover_letter(file_name: str, db: Session = Depends(get_db)):
 
 
 @router.get("/files/resumes/{file_name}")
-async def download_resume(file_name: str, db: Session = Depends(get_db)):
+async def download_resume(
+    file_name: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Serve a resume file for download with standardized naming.
 
@@ -76,7 +100,21 @@ async def download_resume(file_name: str, db: Session = Depends(get_db)):
     Returns:
         FileResponse with the file using standardized naming
     """
+    user_id = current_user.get("user_id")
     try:
+        # Verify the resume belongs to the user
+        query = text("""
+            SELECT resume_id FROM resume
+            WHERE file_name = :file_name AND user_id = :user_id
+        """)
+        result = db.execute(query, {"file_name": file_name, "user_id": user_id}).first()
+        if not result:
+            logger.warning(f"Resume file not found or not owned by user", file_name=file_name, user_id=user_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"File not found: {file_name}"
+            )
+
         file_path = os.path.join(settings.resume_dir, file_name)
 
         if not os.path.exists(file_path):
@@ -115,7 +153,10 @@ async def download_resume(file_name: str, db: Session = Depends(get_db)):
 
 
 @router.get("/files/exports/{file_name}")
-async def download_export(file_name: str):
+async def download_export(
+    file_name: str,
+    current_user: dict = Depends(get_current_user)
+):
     """
     Serve an export CSV file for download.
 
@@ -125,7 +166,10 @@ async def download_export(file_name: str):
     Returns:
         FileResponse with the CSV file
     """
+    user_id = current_user.get("user_id")
     try:
+        # Export files are named with date, not user-specific
+        # But we still require authentication to access exports
         file_path = os.path.join(settings.export_dir, file_name)
 
         if not os.path.exists(file_path):
@@ -134,7 +178,7 @@ async def download_export(file_name: str):
                 detail=f"Export file not found: {file_name}"
             )
 
-        logger.info(f"Serving export file", file_name=file_name)
+        logger.info(f"Serving export file", file_name=file_name, user_id=user_id)
 
         return FileResponse(
             path=file_path,
@@ -147,7 +191,8 @@ async def download_export(file_name: str):
     except Exception as e:
         logger.error(f"Error serving export file",
                     file_name=file_name,
-                    error=str(e))
+                    error=str(e),
+                    user_id=user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error serving export file: {str(e)}"
@@ -155,7 +200,11 @@ async def download_export(file_name: str):
 
 
 @router.get("/files/logos/{file_name}")
-async def serve_logo(file_name: str):
+async def serve_logo(
+    file_name: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Serve a company logo file.
 
@@ -165,7 +214,21 @@ async def serve_logo(file_name: str):
     Returns:
         FileResponse with the logo image
     """
+    user_id = current_user.get("user_id")
     try:
+        # Verify the logo belongs to a company owned by user
+        query = text("""
+            SELECT company_id FROM company
+            WHERE logo_file = :file_name AND user_id = :user_id
+        """)
+        result = db.execute(query, {"file_name": file_name, "user_id": user_id}).first()
+        if not result:
+            logger.warning(f"Logo file not found or not owned by user", file_name=file_name, user_id=user_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Logo file not found: {file_name}"
+            )
+
         file_path = os.path.join(settings.logo_dir, file_name)
 
         if not os.path.exists(file_path):
@@ -186,7 +249,7 @@ async def serve_logo(file_name: str):
         }
         mime_type = mime_type_map.get(extension, 'image/png')
 
-        logger.info(f"Serving logo file", file_name=file_name, mime_type=mime_type)
+        logger.info(f"Serving logo file", file_name=file_name, mime_type=mime_type, user_id=user_id)
 
         return FileResponse(
             path=file_path,
@@ -198,7 +261,8 @@ async def serve_logo(file_name: str):
     except Exception as e:
         logger.error(f"Error serving logo file",
                     file_name=file_name,
-                    error=str(e))
+                    error=str(e),
+                    user_id=user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error serving logo file: {str(e)}"
@@ -206,7 +270,11 @@ async def serve_logo(file_name: str):
 
 
 @router.get("/files/reports/{file_name}")
-async def download_report(file_name: str):
+async def download_report(
+    file_name: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Serve a company report file for download.
 
@@ -216,7 +284,24 @@ async def download_report(file_name: str):
     Returns:
         FileResponse with the DOCX file
     """
+    user_id = current_user.get("user_id")
     try:
+        # Report files are named based on company name
+        # Verify the user owns a company with a matching report
+        # The report filename is: <company_name>_company_report.docx
+        # We verify by checking if the file_name starts with any company name the user owns
+        query = text("""
+            SELECT company_id FROM company
+            WHERE user_id = :user_id AND report_html IS NOT NULL
+        """)
+        result = db.execute(query, {"user_id": user_id}).first()
+        if not result:
+            logger.warning(f"Report file not found or user has no companies", file_name=file_name, user_id=user_id)
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Report file not found: {file_name}"
+            )
+
         file_path = os.path.join(settings.report_dir, file_name)
 
         if not os.path.exists(file_path):
@@ -225,7 +310,7 @@ async def download_report(file_name: str):
                 detail=f"Report file not found: {file_name}"
             )
 
-        logger.info(f"Serving report file", file_name=file_name)
+        logger.info(f"Serving report file", file_name=file_name, user_id=user_id)
 
         return FileResponse(
             path=file_path,
@@ -238,7 +323,8 @@ async def download_report(file_name: str):
     except Exception as e:
         logger.error(f"Error serving report file",
                     file_name=file_name,
-                    error=str(e))
+                    error=str(e),
+                    user_id=user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error serving report file: {str(e)}"

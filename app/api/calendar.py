@@ -9,6 +9,7 @@ from ..schemas.calendar import Calendar as CalendarSchema, CalendarCreate, Calen
 from ..utils.date_helpers import get_month_date_range, get_week_date_range, validate_week_start
 from ..utils.job_helpers import update_job_activity, calc_avg_score
 from ..utils.logger import logger
+from ..middleware.auth_middleware import get_current_user
 
 router = APIRouter()
 
@@ -16,20 +17,22 @@ router = APIRouter()
 @router.get("/calendar/appt")
 async def get_job_appointments(
     job_id: int = Query(..., description="Job ID to get appointments for"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Get all appointments for a specific job.
     """
+    user_id = current_user.get("user_id")
     query = """
         SELECT calendar_id, calendar_type, start_time, end_time, start_date, end_date,
                participant, calendar_desc, outcome_score
         FROM calendar
-        WHERE job_id = :job_id
+        WHERE job_id = :job_id AND user_id = :user_id
         ORDER BY start_date DESC, start_time DESC
     """
 
-    result = db.execute(text(query), {"job_id": job_id})
+    result = db.execute(text(query), {"job_id": job_id, "user_id": user_id})
 
     return [
         {
@@ -51,11 +54,13 @@ async def get_job_appointments(
 async def get_month_calendar(
     date: str = Query(..., description="Date in YYYY-MM format"),
     job_id: Optional[int] = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Get calendar appointments for a specific month.
     """
+    user_id = current_user.get("user_id")
     try:
         start_date, end_date = get_month_date_range(date)
     except ValueError:
@@ -65,10 +70,10 @@ async def get_month_calendar(
         SELECT c.*, j.company
         FROM calendar c
         JOIN job j ON c.job_id = j.job_id
-        WHERE c.start_date BETWEEN :start_date AND :end_date
+        WHERE c.start_date BETWEEN :start_date AND :end_date AND c.user_id = :user_id
     """
 
-    params = {"start_date": start_date, "end_date": end_date}
+    params = {"start_date": start_date, "end_date": end_date, "user_id": user_id}
 
     if job_id:
         query += " AND c.job_id = :job_id"
@@ -104,11 +109,13 @@ async def get_month_calendar(
 async def get_week_calendar(
     date: str = Query(..., description="Date in YYYY-MM-DD format (must be Monday)"),
     job_id: Optional[int] = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Get calendar appointments for a specific week.
     """
+    user_id = current_user.get("user_id")
     if not validate_week_start(date):
         raise HTTPException(status_code=400, detail="Date must be a Monday (first day of the week)")
 
@@ -121,10 +128,10 @@ async def get_week_calendar(
         SELECT c.*, j.company
         FROM calendar c
         JOIN job j ON c.job_id = j.job_id
-        WHERE c.start_date BETWEEN :start_date AND :end_date
+        WHERE c.user_id = :user_id AND c.start_date BETWEEN :start_date AND :end_date
     """
 
-    params = {"start_date": start_date, "end_date": end_date}
+    params = {"start_date": start_date, "end_date": end_date, "user_id": user_id}
 
     if job_id:
         query += " AND c.job_id = :job_id"
@@ -160,19 +167,21 @@ async def get_week_calendar(
 async def get_day_calendar(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
     job_id: Optional[int] = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Get calendar appointments for a specific day.
     """
+    user_id = current_user.get("user_id")
     query = """
         SELECT c.*, j.company
         FROM calendar c
         JOIN job j ON c.job_id = j.job_id
-        WHERE c.start_date = :date
+        WHERE c.user_id = :user_id AND c.start_date = :date
     """
 
-    params = {"date": date}
+    params = {"date": date, "user_id": user_id}
 
     if job_id:
         query += " AND c.job_id = :job_id"
@@ -208,11 +217,14 @@ async def get_day_calendar(
 async def create_or_update_calendar(
     calendar_data: CalendarUpdate,
     job_id: Optional[int] = Query(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Create a new calendar event or update an existing one.
     """
+    user_id = current_user.get("user_id")
+    calendar_data.user_id = user_id
     # Use job_id from query parameter if provided and not in body
     if job_id and not calendar_data.job_id:
         calendar_data.job_id = job_id
@@ -220,15 +232,16 @@ async def create_or_update_calendar(
     if not calendar_data.job_id:
         raise HTTPException(status_code=400, detail="job_id is required")
 
-    # Verify job exists
-    job = db.query(Job).filter(Job.job_id == calendar_data.job_id).first()
+    # Verify job exists and belongs to user
+    job = db.query(Job).filter(Job.job_id == calendar_data.job_id, Job.user_id == user_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
     if calendar_data.calendar_id:
-        # Update existing calendar event
+        # Update existing calendar event - ensure it belongs to user
         calendar_event = db.query(Calendar).filter(
-            Calendar.calendar_id == calendar_data.calendar_id
+            Calendar.calendar_id == calendar_data.calendar_id,
+            Calendar.user_id == user_id
         ).first()
         if not calendar_event:
             raise HTTPException(status_code=404, detail="Calendar event not found")
@@ -264,20 +277,25 @@ async def create_or_update_calendar(
 
 
 @router.get("/calendar/{calendar_id}", response_model=CalendarSchema)
-async def get_calendar_event(calendar_id: int, db: Session = Depends(get_db)):
+async def get_calendar_event(
+    calendar_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Get a single calendar event by ID.
     This route must be defined AFTER the specific routes (/month, /week, /day)
     to avoid path conflicts.
     """
+    user_id = current_user.get("user_id")
     query = """
         SELECT c.*, j.company
         FROM calendar c
         JOIN job j ON c.job_id = j.job_id
-        WHERE c.calendar_id = :calendar_id
+        WHERE c.user_id = :user_id AND c.calendar_id = :calendar_id
     """
 
-    result = db.execute(text(query), {"calendar_id": calendar_id}).fetchone()
+    result = db.execute(text(query), {"calendar_id": calendar_id, "user_id": user_id}).fetchone()
 
     if not result:
         raise HTTPException(status_code=404, detail="Calendar event not found")
@@ -304,14 +322,19 @@ async def get_calendar_event(calendar_id: int, db: Session = Depends(get_db)):
 @router.delete("/calendar/appt")
 async def delete_calendar_appointment(
     appointment_id: int = Query(..., description="Calendar appointment ID to delete"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Delete a calendar appointment by ID.
     """
+    user_id = current_user.get("user_id")
     try:
-        # Check if appointment exists
-        appointment = db.query(Calendar).filter(Calendar.calendar_id == appointment_id).first()
+        # Check if appointment exists and belongs to user
+        appointment = db.query(Calendar).filter(
+            Calendar.calendar_id == appointment_id,
+            Calendar.user_id == user_id
+        ).first()
 
         if not appointment:
             raise HTTPException(status_code=404, detail="Appointment not found")
@@ -330,7 +353,7 @@ async def delete_calendar_appointment(
             except Exception as e:
                 logger.warning(f"Failed to recalculate average score after delete", job_id=job_id, error=str(e))
 
-        logger.info(f"Deleted calendar appointment", appointment_id=appointment_id, job_id=job_id)
+        logger.info(f"Deleted calendar appointment", appointment_id=appointment_id, job_id=job_id, user_id=user_id)
 
         return {"message": "Appointment deleted successfully"}
 
@@ -338,5 +361,5 @@ async def delete_calendar_appointment(
         raise
     except Exception as e:
         db.rollback()
-        logger.error(f"Error deleting calendar appointment", appointment_id=appointment_id, error=str(e))
+        logger.error(f"Error deleting calendar appointment", appointment_id=appointment_id, error=str(e), user_id=user_id)
         raise HTTPException(status_code=500, detail="Failed to delete appointment")

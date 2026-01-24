@@ -1,13 +1,14 @@
 import re
-from typing import Optional
+from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from ..core.database import get_db
-from ..models.models import Personal as PersonalModel
 from ..schemas.personal import Personal, PersonalCreate, PersonalUpdate
 from ..utils.logger import logger
+from ..utils.user_helper import get_user_info, get_user_settings
+from ..middleware.auth_middleware import get_current_user
 
 router = APIRouter()
 
@@ -41,269 +42,141 @@ def format_phone_number(phone: str) -> str:
 
 
 @router.get("/personal")
-async def get_personal_info(db: Session = Depends(get_db)):
+async def get_personal_info(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
-    Get personal information.
+    Get personal information for the authenticated user.
 
-    Returns either the existing personal record or an empty object if none exists.
+    Requires authentication via Bearer token.
+    Returns the user record with settings for the authenticated user.
     """
+    user_id = current_user.get("user_id")
+    if not user_id:
+        logger.error("No user_id in token payload")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token: missing user_id"
+        )
+
     try:
-        # Query to get any existing record (there should only be 0 or 1)
-        query = text("""
-            SELECT * FROM personal
-            WHERE first_name IS NULL OR first_name IS NOT NULL
-            LIMIT 1
-        """)
+        # Get user info
+        user_info = get_user_info(db, user_id)
+        if not user_info:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
 
-        result = db.execute(query).first()
+        # Get user settings
+        user_settings = get_user_settings(db, user_id)
+        if not user_settings:
+            user_settings = _get_default_settings()
 
-        if result:
-            # Convert to dict and return
-            return {
-                "first_name": result.first_name or "",
-                "last_name": result.last_name or "",
-                "email": result.email or "",
-                "phone": result.phone or "",
-                "linkedin_url": result.linkedin_url or "",
-                "github_url": result.github_url or "",
-                "website_url": result.website_url or "",
-                "portfolio_url": result.portfolio_url or "",
-                "address_1": result.address_1 or "",
-                "address_2": result.address_2 or "",
-                "city": result.city or "",
-                "state": result.state or "",
-                "zip": result.zip or "",
-                "country": result.country or "",
-	            "login": result.login or "",
-	            "passwd": result.passwd or "",
-                "no_response_week": result.no_response_week,
-	            "default_llm": result.default_llm or "",
-	            "resume_extract_llm": result.resume_extract_llm or "",
-                "job_extract_llm": result.job_extract_llm or "",
-                "rewrite_llm": result.rewrite_llm or "",
-                "cover_llm": result.cover_llm or "",
-                "company_llm": result.company_llm or "",
-	            "tools_llm": result.tools_llm or "",
-                "openai_api_key": result.openai_api_key or "",
-                "tinymce_api_key": result.tinymce_api_key or "",
-                "convertapi_key": result.convertapi_key or "",
-                "docx2html": result.docx2html or "docx-parser-converter",
-                "odt2html": result.odt2html or "pandoc",
-                "pdf2html": result.pdf2html or "markitdown",
-                "html2docx": result.html2docx or "html4docx",
-                "html2odt": result.html2odt or "pandoc",
-                "html2pdf": result.html2pdf or "weasyprint"
-            }
-        else:
-            # Return empty object
-            return {
-                "first_name": "",
-                "last_name": "",
-                "email": "",
-                "phone": "",
-                "linkedin_url": "",
-                "github_url": "",
-                "website_url": "",
-                "portfolio_url": "",
-                "address_1": "",
-                "address_2": "",
-                "city": "",
-                "state": "",
-                "zip": "",
-                "country": "",
-	            "login": "",
-	            "passwd": "",
-                "no_response_week": 4,
-	            "default_llm": "gpt-4.1-mini",
-	            "resume_extract_llm": "gpt-4.1-mini",
-                "job_extract_llm": "gpt-4.1-mini",
-                "rewrite_llm": "gpt-4.1-mini",
-                "cover_llm": "gpt-4.1-mini",
-                "company_llm": "gpt-4.1-mini",
-	            "tools_llm": "gpt-4.1-mini",
-                "openai_api_key": "",
-                "tinymce_api_key": "",
-                "convertapi_key": "",
-                "docx2html": "docx-parser-converter",
-                "odt2html": "pandoc",
-                "pdf2html": "markitdown",
-                "html2docx": "html4docx",
-                "html2odt": "pandoc",
-                "html2pdf": "weasyprint"
-            }
+        # Combine user info and settings
+        return {
+            "user_id": user_info.get("user_id"),
+            "first_name": user_info.get("first_name", ""),
+            "last_name": user_info.get("last_name", ""),
+            "email": user_info.get("email", ""),
+            "phone": user_info.get("phone", ""),
+            "linkedin_url": user_info.get("linkedin_url", ""),
+            "github_url": user_info.get("github_url", ""),
+            "website_url": user_info.get("website_url", ""),
+            "portfolio_url": user_info.get("portfolio_url", ""),
+            "address_1": user_info.get("address_1", ""),
+            "address_2": user_info.get("address_2", ""),
+            "city": user_info.get("city", ""),
+            "state": user_info.get("state", ""),
+            "zip": user_info.get("zip", ""),
+            "country": user_info.get("country", ""),
+            "login": user_info.get("login", ""),
+            "passwd": "",  # Don't return password
+            "no_response_week": user_settings.get("no_response_week", 6),
+            "default_llm": user_settings.get("default_llm", "gpt-4.1-mini"),
+            "resume_extract_llm": user_settings.get("resume_extract_llm", "gpt-4.1-mini"),
+            "job_extract_llm": user_settings.get("job_extract_llm", "gpt-4.1-mini"),
+            "rewrite_llm": user_settings.get("rewrite_llm", "gpt-4.1-mini"),
+            "cover_llm": user_settings.get("cover_llm", "gpt-4.1-mini"),
+            "company_llm": user_settings.get("company_llm", "gpt-4.1-mini"),
+            "tools_llm": user_settings.get("tools_llm", "gpt-4.1-mini"),
+            "openai_api_key": user_settings.get("openai_api_key", ""),
+            "tinymce_api_key": user_settings.get("tinymce_api_key", ""),
+            "convertapi_key": user_settings.get("convertapi_key", ""),
+            "docx2html": user_settings.get("docx2html", "docx-parser-converter"),
+            "odt2html": user_settings.get("odt2html", "pandoc"),
+            "pdf2html": user_settings.get("pdf2html", "markitdown"),
+            "html2docx": user_settings.get("html2docx", "html4docx"),
+            "html2odt": user_settings.get("html2odt", "pandoc"),
+            "html2pdf": user_settings.get("html2pdf", "weasyprint")
+        }
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error fetching personal info", error=str(e))
+        logger.error(f"Error fetching personal info", user_id=user_id, error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching personal information: {str(e)}"
         )
 
 
-@router.post("/personal", status_code=status.HTTP_200_OK)
-async def save_personal_info(personal_data: PersonalCreate, db: Session = Depends(get_db)):
-    """
-    Save personal information.
+def _get_default_settings():
+    """Return default settings values."""
+    return {
+        "no_response_week": 6,
+        "default_llm": "gpt-4.1-mini",
+        "resume_extract_llm": "gpt-4.1-mini",
+        "job_extract_llm": "gpt-4.1-mini",
+        "rewrite_llm": "gpt-4.1-mini",
+        "cover_llm": "gpt-4.1-mini",
+        "company_llm": "gpt-4.1-mini",
+        "tools_llm": "gpt-4.1-mini",
+        "openai_api_key": "",
+        "tinymce_api_key": "",
+        "convertapi_key": "",
+        "docx2html": "docx-parser-converter",
+        "odt2html": "pandoc",
+        "pdf2html": "markitdown",
+        "html2docx": "html4docx",
+        "html2odt": "pandoc",
+        "html2pdf": "weasyprint"
+    }
 
-    Creates a new record if none exists, otherwise updates the existing record.
+
+@router.post("/personal", status_code=status.HTTP_200_OK)
+async def save_personal_info(
+    personal_data: PersonalCreate,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Save personal information for the authenticated user.
+
+    Requires authentication via Bearer token.
+    Updates user information across users, user_detail, address,
+    user_address, and user_setting tables.
+
+    The user can only update their own information (user_id from token).
     Validates email format and URL formats for relevant fields.
     Formats phone number to standard format.
     """
+    user_id = current_user.get("user_id")
+    if not user_id:
+        logger.error("No user_id in token payload")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token: missing user_id"
+        )
+
     try:
         # Format phone number if provided
         if personal_data.phone and personal_data.phone.strip():
             personal_data.phone = format_phone_number(personal_data.phone)
 
-        # Check if a record already exists
-        check_query = text("""
-            SELECT first_name, last_name FROM personal
-            WHERE first_name IS NULL OR first_name IS NOT NULL
-            LIMIT 1
-        """)
-
-        existing = db.execute(check_query).first()
-
-        if existing:
-            # Update existing record using the composite primary key
-            update_query = text("""
-                UPDATE personal
-                SET email = :email,
-                    phone = :phone,
-                    linkedin_url = :linkedin_url,
-                    github_url = :github_url,
-                    website_url = :website_url,
-                    portfolio_url = :portfolio_url,
-                    address_1 = :address_1,
-                    address_2 = :address_2,
-                    city = :city,
-                    state = :state,
-                    zip = :zip,
-                    country = :country,
-                    login = :login,
-                    passwd = :passwd,
-                    no_response_week = :no_response_week,
-                    default_llm = :default_llm,
-	                resume_extract_llm = :resume_extract_llm,
-                    job_extract_llm = :job_extract_llm,
-                    rewrite_llm = :rewrite_llm,
-                    cover_llm = :cover_llm,
-                    company_llm = :company_llm,
-                    tools_llm = :tools_llm,
-                    openai_api_key = :openai_api_key,
-                    tinymce_api_key = :tinymce_api_key,
-                    convertapi_key = :convertapi_key,
-                    docx2html = :docx2html,
-                    odt2html = :odt2html,
-                    pdf2html = :pdf2html,
-                    html2docx = :html2docx,
-                    html2odt = :html2odt,
-                    html2pdf = :html2pdf
-                WHERE first_name = :old_first_name AND last_name = :old_last_name
-            """)
-
-            db.execute(update_query, {
-                "old_first_name": existing.first_name,
-                "old_last_name": existing.last_name,
-                "first_name": personal_data.first_name,
-                "last_name": personal_data.last_name,
-                "email": personal_data.email,
-                "phone": personal_data.phone,
-                "linkedin_url": personal_data.linkedin_url,
-                "github_url": personal_data.github_url,
-                "website_url": personal_data.website_url,
-                "portfolio_url": personal_data.portfolio_url,
-                "address_1": personal_data.address_1,
-                "address_2": personal_data.address_2,
-                "city": personal_data.city,
-                "state": personal_data.state,
-                "zip": personal_data.zip,
-                "country": personal_data.country,
-                "login": personal_data.login,
-                "passwd": personal_data.passwd,
-                "no_response_week": personal_data.no_response_week,
-                "default_llm": personal_data.default_llm,
-	            "resume_extract_llm": personal_data.resume_extract_llm,
-                "job_extract_llm": personal_data.job_extract_llm,
-                "rewrite_llm": personal_data.rewrite_llm,
-                "cover_llm": personal_data.cover_llm,
-                "company_llm": personal_data.company_llm,
-                "tools_llm": personal_data.tools_llm,
-                "openai_api_key": personal_data.openai_api_key,
-                "tinymce_api_key": personal_data.tinymce_api_key,
-                "convertapi_key": personal_data.convertapi_key,
-                "docx2html": personal_data.docx2html,
-                "odt2html": personal_data.odt2html,
-                "pdf2html": personal_data.pdf2html,
-                "html2docx": personal_data.html2docx,
-                "html2odt": personal_data.html2odt,
-                "html2pdf": personal_data.html2pdf
-            })
-            db.commit()
-
-            logger.info(f"Updated personal information", first_name=existing.first_name, last_name=existing.last_name)
-
-        else:
-            # Insert new record
-            insert_query = text("""
-                INSERT INTO personal (
-                    first_name, last_name, email, phone,
-                    linkedin_url, github_url, website_url, portfolio_url,
-                    address_1, address_2, city, state, zip, country,
-                    login, passwd, no_response_week, default_llm,
-                    resume_extract_llm, job_extract_llm, rewrite_llm, cover_llm, company_llm, tools_llm,
-                    openai_api_key, tinymce_api_key, convertapi_key,
-                    docx2html, odt2html, pdf2html, html2docx, html2odt, html2pdf
-                ) VALUES (
-                    :first_name, :last_name, :email, :phone,
-                    :linkedin_url, :github_url, :website_url, :portfolio_url,
-                    :address_1, :address_2, :city, :state, :zip, :country,
-                    :login, :passwd, :no_response_week, :default_llm,
-                    :resume_extract_llm, :job_extract_llm, :rewrite_llm, :cover_llm, :company_llm, :tools_llm,
-                    :openai_api_key, :tinymce_api_key, :convertapi_key,
-                    :docx2html, :odt2html, :pdf2html, :html2docx, :html2odt, :html2pdf
-                )
-            """)
-
-            db.execute(insert_query, {
-                "first_name": personal_data.first_name,
-                "last_name": personal_data.last_name,
-                "email": personal_data.email,
-                "phone": personal_data.phone,
-                "linkedin_url": personal_data.linkedin_url,
-                "github_url": personal_data.github_url,
-                "website_url": personal_data.website_url,
-                "portfolio_url": personal_data.portfolio_url,
-                "address_1": personal_data.address_1,
-                "address_2": personal_data.address_2,
-                "city": personal_data.city,
-                "state": personal_data.state,
-                "zip": personal_data.zip,
-                "country": personal_data.country,
-                "login": personal_data.login,
-                "passwd": personal_data.passwd,
-                "no_response_week": personal_data.no_response_week,
-                "default_llm": personal_data.default_llm,
-	            "resume_extract_llm": personal_data.resume_extract_llm,
-                "job_extract_llm": personal_data.job_extract_llm,
-                "rewrite_llm": personal_data.rewrite_llm,
-                "cover_llm": personal_data.cover_llm,
-                "company_llm": personal_data.company_llm,
-                "tools_llm": personal_data.tools_llm,
-                "openai_api_key": personal_data.openai_api_key,
-                "tinymce_api_key": personal_data.tinymce_api_key,
-                "convertapi_key": personal_data.convertapi_key,
-                "docx2html": personal_data.docx2html,
-                "odt2html": personal_data.odt2html,
-                "pdf2html": personal_data.pdf2html,
-                "html2docx": personal_data.html2docx,
-                "html2odt": personal_data.html2odt,
-                "html2pdf": personal_data.html2pdf
-            })
-            db.commit()
-
-            logger.info(f"Created new personal information record")
-
-        return {"status": "success"}
+        # Always update the authenticated user's data
+        return await _update_existing_user(db, user_id, personal_data)
 
     except ValueError as e:
         # Validation error from Pydantic
@@ -318,3 +191,148 @@ async def save_personal_info(personal_data: PersonalCreate, db: Session = Depend
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error saving personal information: {str(e)}"
         )
+
+
+async def _update_existing_user(db: Session, user_id: int, personal_data: PersonalCreate):
+    """Update an existing user's information and settings."""
+
+    # Update users table
+    update_users_query = text("""
+        UPDATE users
+        SET first_name = :first_name,
+            last_name = :last_name,
+            email = :email,
+            login = COALESCE(NULLIF(:login, ''), login)
+        WHERE user_id = :user_id
+    """)
+
+    db.execute(update_users_query, {
+        "user_id": user_id,
+        "first_name": personal_data.first_name,
+        "last_name": personal_data.last_name,
+        "email": personal_data.email,
+        "login": personal_data.login
+    })
+
+    # Update or insert user_detail
+    upsert_detail_query = text("""
+        INSERT INTO user_detail (user_id, phone, linkedin_url, github_url, website_url, portfolio_url)
+        VALUES (:user_id, :phone, :linkedin_url, :github_url, :website_url, :portfolio_url)
+        ON CONFLICT (user_id) DO UPDATE SET
+            phone = EXCLUDED.phone,
+            linkedin_url = EXCLUDED.linkedin_url,
+            github_url = EXCLUDED.github_url,
+            website_url = EXCLUDED.website_url,
+            portfolio_url = EXCLUDED.portfolio_url
+    """)
+
+    db.execute(upsert_detail_query, {
+        "user_id": user_id,
+        "phone": personal_data.phone or "",
+        "linkedin_url": personal_data.linkedin_url,
+        "github_url": personal_data.github_url,
+        "website_url": personal_data.website_url,
+        "portfolio_url": personal_data.portfolio_url
+    })
+
+    # Handle address if provided
+    if personal_data.address_1 or personal_data.city or personal_data.state or personal_data.zip:
+        await _upsert_user_address(db, user_id, personal_data)
+
+    # Update or insert user_setting
+    upsert_setting_query = text("""
+        INSERT INTO user_setting (
+            user_id, no_response_week,
+            default_llm, resume_extract_llm, job_extract_llm, rewrite_llm, cover_llm, company_llm, tools_llm,
+            openai_api_key, tinymce_api_key, convertapi_key,
+            docx2html, odt2html, pdf2html, html2docx, html2odt, html2pdf
+        )
+        VALUES (
+            :user_id, :no_response_week,
+            :default_llm, :resume_extract_llm, :job_extract_llm, :rewrite_llm, :cover_llm, :company_llm, :tools_llm,
+            :openai_api_key, :tinymce_api_key, :convertapi_key,
+            :docx2html, :odt2html, :pdf2html, :html2docx, :html2odt, :html2pdf
+        )
+        ON CONFLICT (user_id) DO UPDATE SET
+            no_response_week = EXCLUDED.no_response_week,
+            default_llm = EXCLUDED.default_llm,
+            resume_extract_llm = EXCLUDED.resume_extract_llm,
+            job_extract_llm = EXCLUDED.job_extract_llm,
+            rewrite_llm = EXCLUDED.rewrite_llm,
+            cover_llm = EXCLUDED.cover_llm,
+            company_llm = EXCLUDED.company_llm,
+            tools_llm = EXCLUDED.tools_llm,
+            openai_api_key = EXCLUDED.openai_api_key,
+            tinymce_api_key = EXCLUDED.tinymce_api_key,
+            convertapi_key = EXCLUDED.convertapi_key,
+            docx2html = EXCLUDED.docx2html,
+            odt2html = EXCLUDED.odt2html,
+            pdf2html = EXCLUDED.pdf2html,
+            html2docx = EXCLUDED.html2docx,
+            html2odt = EXCLUDED.html2odt,
+            html2pdf = EXCLUDED.html2pdf
+    """)
+
+    db.execute(upsert_setting_query, {
+        "user_id": user_id,
+        "no_response_week": personal_data.no_response_week or 6,
+        "default_llm": personal_data.default_llm or "gpt-4.1-mini",
+        "resume_extract_llm": personal_data.resume_extract_llm or "gpt-4.1-mini",
+        "job_extract_llm": personal_data.job_extract_llm or "gpt-4.1-mini",
+        "rewrite_llm": personal_data.rewrite_llm or "gpt-4.1-mini",
+        "cover_llm": personal_data.cover_llm or "gpt-4.1-mini",
+        "company_llm": personal_data.company_llm or "gpt-4.1-mini",
+        "tools_llm": personal_data.tools_llm or "gpt-4.1-mini",
+        "openai_api_key": personal_data.openai_api_key,
+        "tinymce_api_key": personal_data.tinymce_api_key,
+        "convertapi_key": personal_data.convertapi_key,
+        "docx2html": personal_data.docx2html or "docx-parser-converter",
+        "odt2html": personal_data.odt2html or "pandoc",
+        "pdf2html": personal_data.pdf2html or "markitdown",
+        "html2docx": personal_data.html2docx or "html4docx",
+        "html2odt": personal_data.html2odt or "pandoc",
+        "html2pdf": personal_data.html2pdf or "weasyprint"
+    })
+
+    db.commit()
+
+    logger.info(f"Updated user information", user_id=user_id)
+    return {"status": "success", "user_id": user_id}
+
+
+async def _upsert_user_address(db: Session, user_id: int, personal_data: PersonalCreate):
+    """Create or update user's address."""
+
+    # First, try to get or create the address
+    address_query = text("""
+        INSERT INTO address (address_1, address_2, city, state, zip, country)
+        VALUES (:address_1, :address_2, :city, :state, :zip, :country)
+        ON CONFLICT (address_1, address_2, city, state, zip) DO UPDATE SET
+            country = EXCLUDED.country
+        RETURNING address_id
+    """)
+
+    result = db.execute(address_query, {
+        "address_1": personal_data.address_1 or "",
+        "address_2": personal_data.address_2 or "",
+        "city": personal_data.city or "",
+        "state": personal_data.state or "",
+        "zip": personal_data.zip or "",
+        "country": personal_data.country or "US"
+    })
+
+    address_id = result.fetchone()[0]
+
+    # Link user to address (set as default, remove old default)
+    # First remove existing default
+    db.execute(text("""
+        UPDATE user_address SET is_default = false WHERE user_id = :user_id
+    """), {"user_id": user_id})
+
+    # Then insert or update the new default address
+    db.execute(text("""
+        INSERT INTO user_address (user_id, address_id, is_default, address_type)
+        VALUES (:user_id, :address_id, true, 'home')
+        ON CONFLICT (user_id, address_id) DO UPDATE SET
+            is_default = true
+    """), {"user_id": user_id, "address_id": address_id})

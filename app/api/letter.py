@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -12,12 +12,17 @@ from ..utils.logger import logger
 from ..utils.ai_agent import AiAgent
 from ..utils.conversion import Conversion
 from ..utils.job_helpers import update_job_activity
+from ..middleware.auth_middleware import get_current_user
 
 router = APIRouter()
 
 
 @router.get("/letter", response_model=Letter)
-async def get_letter(cover_id: int, db: Session = Depends(get_db)):
+async def get_letter(
+    cover_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Get a specific cover letter by cover_id.
 
@@ -28,15 +33,16 @@ async def get_letter(cover_id: int, db: Session = Depends(get_db)):
     Returns:
         Cover letter details
     """
+    user_id = current_user.get("user_id")
     try:
         query = text("""
             SELECT cover_id, resume_id, job_id, letter_length, letter_tone,
                    instruction, letter_content, file_name, letter_created
             FROM cover_letter
-            WHERE cover_id = :cover_id
+            WHERE cover_id = :cover_id AND user_id = :user_id
         """)
 
-        result = db.execute(query, {"cover_id": cover_id}).first()
+        result = db.execute(query, {"cover_id": cover_id, "user_id": user_id}).first()
 
         if not result:
             raise HTTPException(
@@ -59,7 +65,7 @@ async def get_letter(cover_id: int, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching cover letter", cover_id=cover_id, error=str(e))
+        logger.error(f"Error fetching cover letter", cover_id=cover_id, error=str(e), user_id=user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error fetching cover letter: {str(e)}"
@@ -67,7 +73,10 @@ async def get_letter(cover_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/letter/list", response_model=List[LetterListItem])
-async def get_letter_list(db: Session = Depends(get_db)):
+async def get_letter_list(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Get a list of all active cover letters with job information.
 
@@ -77,6 +86,7 @@ async def get_letter_list(db: Session = Depends(get_db)):
     Returns:
         List of active cover letters with summary information
     """
+    user_id = current_user.get("user_id")
     try:
         query = text("""
             SELECT cl.letter_tone, cl.letter_length, cl.letter_created,
@@ -84,11 +94,11 @@ async def get_letter_list(db: Session = Depends(get_db)):
                    j.company, j.job_title
             FROM cover_letter cl
             JOIN job j ON (cl.job_id = j.job_id)
-            WHERE cl.cover_id > 0 AND cl.letter_active = true
+            WHERE cl.cover_id > 0 AND cl.letter_active = true AND cl.user_id = :user_id
             ORDER BY cl.letter_created DESC, j.company ASC
         """)
 
-        results = db.execute(query).fetchall()
+        results = db.execute(query, {"user_id": user_id}).fetchall()
 
         return [
             {
@@ -114,7 +124,11 @@ async def get_letter_list(db: Session = Depends(get_db)):
 
 
 @router.post("/letter", status_code=status.HTTP_200_OK)
-async def save_letter(letter_data: dict, db: Session = Depends(get_db)):
+async def save_letter(
+    letter_data: dict,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Create or update a cover letter.
 
@@ -128,6 +142,7 @@ async def save_letter(letter_data: dict, db: Session = Depends(get_db)):
     Returns:
         Success status with cover_id
     """
+    user_id = current_user.get("user_id")
     try:
         cover_id = letter_data.get('cover_id')
 
@@ -148,7 +163,7 @@ async def save_letter(letter_data: dict, db: Session = Depends(get_db)):
             )
 
         if cover_id:
-            # Update existing cover letter
+            # Update existing cover letter - ensure user owns it
             update_query = text("""
                 UPDATE cover_letter
                 SET resume_id = :resume_id,
@@ -158,11 +173,12 @@ async def save_letter(letter_data: dict, db: Session = Depends(get_db)):
                     instruction = :instruction,
                     letter_content = :letter_content,
                     file_name = :file_name
-                WHERE cover_id = :cover_id
+                WHERE cover_id = :cover_id AND user_id = :user_id
             """)
 
-            db.execute(update_query, {
+            result = db.execute(update_query, {
                 "cover_id": cover_id,
+                "user_id": user_id,
                 "resume_id": letter_data.get('resume_id'),
                 "job_id": letter_data.get('job_id'),
                 "letter_length": letter_data.get('letter_length'),
@@ -172,6 +188,12 @@ async def save_letter(letter_data: dict, db: Session = Depends(get_db)):
                 "file_name": letter_data.get('file_name')
             })
             db.commit()
+
+            if result.rowcount == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Cover letter with ID {cover_id} not found"
+                )
 
             # Update job activity
             job_id = letter_data.get('job_id')
@@ -185,19 +207,20 @@ async def save_letter(letter_data: dict, db: Session = Depends(get_db)):
             return {"status": "success", "cover_id": cover_id}
 
         else:
-            # Insert new cover letter
+            # Insert new cover letter with user_id
             insert_query = text("""
                 INSERT INTO cover_letter (
-                    resume_id, job_id, letter_length, letter_tone,
+                    user_id, resume_id, job_id, letter_length, letter_tone,
                     instruction, letter_content, file_name
                 ) VALUES (
-                    :resume_id, :job_id, :letter_length, :letter_tone,
+                    :user_id, :resume_id, :job_id, :letter_length, :letter_tone,
                     :instruction, :letter_content, :file_name
                 )
                 RETURNING cover_id
             """)
 
             result = db.execute(insert_query, {
+                "user_id": user_id,
                 "resume_id": letter_data.get('resume_id'),
                 "job_id": letter_data.get('job_id'),
                 "letter_length": letter_data.get('letter_length'),
@@ -209,17 +232,18 @@ async def save_letter(letter_data: dict, db: Session = Depends(get_db)):
 
             new_cover_id = result.fetchone()[0]
 
-            # Update the job record with the cover_id
+            # Update the job record with the cover_id - ensure user owns the job
             job_id = letter_data.get('job_id')
             if job_id:
                 update_job_query = text("""
                     UPDATE job
                     SET cover_id = :cover_id
-                    WHERE job_id = :job_id
+                    WHERE job_id = :job_id AND user_id = :user_id
                 """)
                 db.execute(update_job_query, {
                     "cover_id": new_cover_id,
-                    "job_id": job_id
+                    "job_id": job_id,
+                    "user_id": user_id
                 })
 
             db.commit()
@@ -245,7 +269,11 @@ async def save_letter(letter_data: dict, db: Session = Depends(get_db)):
 
 
 @router.delete("/letter", status_code=status.HTTP_200_OK)
-async def delete_letter(cover_id: int, db: Session = Depends(get_db)):
+async def delete_letter(
+    cover_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Soft delete a cover letter by setting letter_active to false.
 
@@ -256,13 +284,14 @@ async def delete_letter(cover_id: int, db: Session = Depends(get_db)):
     Returns:
         Success status
     """
+    user_id = current_user.get("user_id")
     try:
-        # Check if the cover letter exists
+        # Check if the cover letter exists and belongs to user
         check_query = text("""
-            SELECT cover_id FROM cover_letter WHERE cover_id = :cover_id
+            SELECT cover_id FROM cover_letter WHERE cover_id = :cover_id AND user_id = :user_id
         """)
 
-        result = db.execute(check_query, {"cover_id": cover_id}).first()
+        result = db.execute(check_query, {"cover_id": cover_id, "user_id": user_id}).first()
 
         if not result:
             raise HTTPException(
@@ -270,23 +299,23 @@ async def delete_letter(cover_id: int, db: Session = Depends(get_db)):
                 detail=f"Cover letter with ID {cover_id} not found"
             )
 
-        # Soft delete by setting letter_active to false
+        # Soft delete by setting letter_active to false - include user_id for safety
         delete_query = text("""
             UPDATE cover_letter
             SET letter_active = false
-            WHERE cover_id = :cover_id
+            WHERE cover_id = :cover_id AND user_id = :user_id
         """)
 
-        db.execute(delete_query, {"cover_id": cover_id})
+        db.execute(delete_query, {"cover_id": cover_id, "user_id": user_id})
         db.commit()
 
-        logger.info(f"Soft deleted cover letter", cover_id=cover_id)
+        logger.info(f"Soft deleted cover letter", cover_id=cover_id, user_id=user_id)
         return {"status": "success", "cover_id": cover_id}
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting cover letter", cover_id=cover_id, error=str(e))
+        logger.error(f"Error deleting cover letter", cover_id=cover_id, error=str(e), user_id=user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error deleting cover letter: {str(e)}"
@@ -294,9 +323,15 @@ async def delete_letter(cover_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/letter/write", status_code=status.HTTP_200_OK)
-async def write_cover_letter(request_data: dict, db: Session = Depends(get_db)):
+async def write_cover_letter(
+    request_data: dict,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
     """
     Generate a cover letter using AI and update the database.
+
+    Requires authentication via Bearer token.
 
     Args:
         request_data: Dictionary containing cover_id
@@ -306,29 +341,38 @@ async def write_cover_letter(request_data: dict, db: Session = Depends(get_db)):
         Dictionary containing the generated letter_content
     """
     try:
-        cover_id = request_data.get('cover_id')
+        user_id = current_user.get("user_id")
+        if not user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token: missing user_id"
+            )
 
+        cover_id = request_data.get('cover_id')
         if not cover_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="cover_id is required"
             )
 
-        # Query for all required data
+        # Query for all required data from normalized user tables - ensure cover_letter belongs to user
         query = text("""
             SELECT cl.letter_tone, cl.letter_length, cl.instruction, jd.job_desc,
                    j.company, j.job_title, rd.resume_md_rewrite,
-                   p.first_name, p.last_name, p.city, p.state, p.email, p.phone
+                   u.first_name, u.last_name, a.city, a.state, u.email, ud.phone
             FROM cover_letter cl
             JOIN job j ON (cl.job_id = j.job_id)
             JOIN job_detail jd ON (j.job_id = jd.job_id)
             JOIN resume r ON (cl.resume_id = r.resume_id)
-            JOIN resume_detail rd ON (r.resume_id = rd.resume_id),
-            personal p
-            WHERE cl.cover_id = :cover_id
+            JOIN resume_detail rd ON (r.resume_id = rd.resume_id)
+            CROSS JOIN users u
+            LEFT JOIN user_detail ud ON (u.user_id = ud.user_id)
+            LEFT JOIN user_address ua ON (u.user_id = ua.user_id AND ua.is_default = true)
+            LEFT JOIN address a ON (ua.address_id = a.address_id)
+            WHERE cl.cover_id = :cover_id AND cl.user_id = :user_id AND u.user_id = :user_id
         """)
 
-        result = db.execute(query, {"cover_id": cover_id}).first()
+        result = db.execute(query, {"cover_id": cover_id, "user_id": user_id}).first()
 
         if not result:
             raise HTTPException(
@@ -376,15 +420,16 @@ async def write_cover_letter(request_data: dict, db: Session = Depends(get_db)):
         if not letter_content:
             raise ValueError("AI did not return letter_content")
 
-        # Update the cover_letter record with the generated content
+        # Update the cover_letter record with the generated content - include user_id for safety
         update_query = text("""
             UPDATE cover_letter
             SET letter_content = :letter_content
-            WHERE cover_id = :cover_id
+            WHERE cover_id = :cover_id AND user_id = :user_id
         """)
 
         db.execute(update_query, {
             "cover_id": cover_id,
+            "user_id": user_id,
             "letter_content": letter_content
         })
         db.commit()
@@ -410,7 +455,11 @@ async def write_cover_letter(request_data: dict, db: Session = Depends(get_db)):
 
 
 @router.post("/letter/convert", status_code=status.HTTP_200_OK)
-async def convert_cover_letter(request_data: dict, db: Session = Depends(get_db)):
+async def convert_cover_letter(
+    request_data: dict,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Convert a cover letter (HTML format) to DOCX format.
 
@@ -421,6 +470,7 @@ async def convert_cover_letter(request_data: dict, db: Session = Depends(get_db)
     Returns:
         Dictionary containing the generated file_name
     """
+    user_id = current_user.get("user_id")
     try:
         cover_id = request_data.get('cover_id')
         output_format = request_data.get('format', 'docx')
@@ -438,15 +488,15 @@ async def convert_cover_letter(request_data: dict, db: Session = Depends(get_db)
                 detail="Only 'docx' format is currently supported"
             )
 
-        # Query for cover letter data
+        # Query for cover letter data - ensure user owns it
         query = text("""
             SELECT cl.letter_content, cl.file_name, j.company, j.job_title
             FROM cover_letter cl
             JOIN job j ON (cl.job_id = j.job_id)
-            WHERE cl.cover_id = :cover_id
+            WHERE cl.cover_id = :cover_id AND cl.user_id = :user_id
         """)
 
-        result = db.execute(query, {"cover_id": cover_id}).first()
+        result = db.execute(query, {"cover_id": cover_id, "user_id": user_id}).first()
 
         if not result:
             raise HTTPException(
@@ -510,27 +560,28 @@ async def convert_cover_letter(request_data: dict, db: Session = Depends(get_db)
                 os.unlink(temp_html_path)
             raise Exception(f"Pandoc conversion to DOCX failed: {e.stderr}")
 
-        # Update the cover_letter record with the filename
+        # Update the cover_letter record with the filename - include user_id for safety
         update_query = text("""
             UPDATE cover_letter
             SET file_name = :file_name
-            WHERE cover_id = :cover_id
+            WHERE cover_id = :cover_id AND user_id = :user_id
         """)
 
         db.execute(update_query, {
             "cover_id": cover_id,
+            "user_id": user_id,
             "file_name": file_name
         })
         db.commit()
 
-        logger.info(f"Cover letter converted to DOCX", cover_id=cover_id, file_name=file_name)
+        logger.info(f"Cover letter converted to DOCX", cover_id=cover_id, file_name=file_name, user_id=user_id)
 
         return {"file_name": file_name}
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error converting cover letter", cover_id=cover_id, error=str(e))
+        logger.error(f"Error converting cover letter", cover_id=cover_id, error=str(e), user_id=user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error converting cover letter: {str(e)}"

@@ -241,7 +241,7 @@ def create_access_token(
         "aud": "account",  # Audience
         "iat": int(now.timestamp()),  # Issued at
         "exp": int(expires.timestamp()),  # Expiration
-        "nbf": int(now.timestamp()),  # Not before
+        # Note: nbf (not before) removed due to time sync issues between containers
         "jti": str(uuid.uuid4()),  # JWT ID (unique identifier)
 
         # Custom claims
@@ -289,7 +289,13 @@ def verify_access_token(token: str) -> Optional[Dict[str, Any]]:
         Dict containing token payload, or None if invalid
     """
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        # Disable audience verification since we include 'aud' claim but don't need to validate it
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+            options={"verify_aud": False}
+        )
         logger.debug(f"Token verified", username=payload.get("preferred_username"))
         return payload
     except JWTError as e:

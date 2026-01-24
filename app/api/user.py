@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import text
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from ..core.database import get_db
 from ..schemas.user import UserRequest, UserResponse
 from ..schemas.user_setting import UserSettingRequest, UserSettingResponse
 from ..utils.logger import logger
 from ..utils.password import hash_password
+from ..middleware.auth_middleware import get_current_user
 
 router = APIRouter()
 
@@ -567,10 +568,13 @@ def _has_address_data(user_data: UserRequest) -> bool:
 @router.get("/user/setting", response_model=UserSettingResponse)
 async def get_user_setting(
     user_id: int,
+    current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
     Retrieve user settings by user_id.
+
+    Requires authentication. Users can only access their own settings.
 
     Args:
         user_id: The ID of the user whose settings to retrieve
@@ -578,6 +582,14 @@ async def get_user_setting(
     Returns:
         UserSettingResponse with all user settings
     """
+    # Verify user can only access their own settings
+    token_user_id = current_user.get("user_id")
+    if token_user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot access settings for another user"
+        )
+
     logger.info("Retrieving user settings", user_id=user_id)
 
     try:

@@ -4,6 +4,7 @@ from pydantic import BaseModel, field_validator
 
 
 class PersonalBase(BaseModel):
+    user_id: Optional[int] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     email: Optional[str] = None

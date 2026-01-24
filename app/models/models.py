@@ -48,6 +48,7 @@ class Resume(Base):
     __tablename__ = "resume"
 
     resume_id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     baseline_resume_id = Column(Integer, ForeignKey("resume.resume_id", ondelete="RESTRICT"))
     job_id = Column(Integer, ForeignKey("job.job_id", ondelete="SET NULL"))
     original_format = Column(SQLEnum(FileFormat), nullable=False)
@@ -60,6 +61,7 @@ class Resume(Base):
     resume_updated = Column(DateTime(timezone=False))
 
     # Relationships
+    user = relationship("User", backref="resumes")
     jobs = relationship("Job", back_populates="resume", foreign_keys="[Job.resume_id]")
     baseline_resume = relationship("Resume", remote_side=[resume_id], foreign_keys=[baseline_resume_id])
     job = relationship("Job", foreign_keys=[job_id])
@@ -107,6 +109,7 @@ class CoverLetter(Base):
     __tablename__ = "cover_letter"
 
     cover_id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     resume_id = Column(Integer, ForeignKey("resume.resume_id", ondelete="CASCADE"), nullable=False)
     job_id = Column(Integer, ForeignKey("job.job_id", ondelete="CASCADE"), nullable=False)
     letter_length = Column(SQLEnum(LetterLength), default=LetterLength.medium, nullable=False)
@@ -119,6 +122,7 @@ class CoverLetter(Base):
     letter_active = Column(Boolean, default=True, nullable=False)
 
     # Relationships
+    user = relationship("User", backref="cover_letters")
     jobs = relationship("Job", back_populates="cover_letter", foreign_keys="[Job.cover_id]")
 
 
@@ -126,6 +130,7 @@ class Job(Base):
     __tablename__ = "job"
 
     job_id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     company = Column(String(64))
     job_title = Column(String(255))
     salary = Column(String(92))
@@ -144,6 +149,7 @@ class Job(Base):
     job_directory = Column(String(255))
 
     # Relationships
+    user = relationship("User", backref="jobs")
     resume = relationship("Resume", back_populates="jobs", foreign_keys=[resume_id])
     cover_letter = relationship("CoverLetter", back_populates="jobs", foreign_keys=[cover_id])
     contacts = relationship("JobContact", back_populates="job")
@@ -170,6 +176,7 @@ class Contact(Base):
     __tablename__ = "contact"
 
     contact_id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     first_name = Column(String(92))
     last_name = Column(String(92))
     job_title = Column(String(255))
@@ -181,6 +188,7 @@ class Contact(Base):
     contact_active = Column(Boolean, default=True)
 
     # Relationships
+    user = relationship("User", backref="contacts")
     jobs = relationship("JobContact", back_populates="contact")
     communications = relationship("Communication", back_populates="contact")
 
@@ -200,6 +208,7 @@ class Note(Base):
     __tablename__ = "note"
 
     note_id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     job_id = Column(Integer, ForeignKey("job.job_id", ondelete="CASCADE"), nullable=False)
     note_title = Column(String(255))
     note_content = Column(Text)
@@ -207,6 +216,7 @@ class Note(Base):
     note_created = Column(DateTime(timezone=False), server_default=func.current_timestamp())
 
     # Relationships
+    user = relationship("User", backref="notes")
     job = relationship("Job", back_populates="notes")
 
 
@@ -214,6 +224,7 @@ class Calendar(Base):
     __tablename__ = "calendar"
 
     calendar_id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     job_id = Column(Integer, ForeignKey("job.job_id", ondelete="CASCADE"), nullable=False)
     calendar_type = Column(SQLEnum(AppointmentType), default=AppointmentType.interview)
     start_date = Column(Date)
@@ -229,6 +240,7 @@ class Calendar(Base):
     video_link = Column(String(255))
 
     # Relationships
+    user = relationship("User", backref="calendar_events")
     job = relationship("Job", back_populates="calendar_events")
 
 
@@ -236,6 +248,7 @@ class Communication(Base):
     __tablename__ = "communication"
 
     communication_id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     job_id = Column(Integer, ForeignKey("job.job_id", ondelete="CASCADE"), nullable=False)
     contact_id = Column(Integer, ForeignKey("contact.contact_id", ondelete="CASCADE"))
     communication_type = Column(SQLEnum(CommunicationType), nullable=False)
@@ -243,6 +256,7 @@ class Communication(Base):
     communication_note = Column(Text)
 
     # Relationships
+    user = relationship("User", backref="communications")
     job = relationship("Job", back_populates="communications")
     contact = relationship("Contact", back_populates="communications")
 
@@ -251,6 +265,7 @@ class Document(Base):
     __tablename__ = "document"
 
     document_id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
     job_id = Column(Integer, ForeignKey("job.job_id", ondelete="CASCADE"), nullable=False)
     document_name = Column(String(255))
     document_desc = Column(Text)
@@ -259,29 +274,75 @@ class Document(Base):
     document_added = Column(DateTime(timezone=False), server_default=func.current_timestamp())
 
     # Relationships
+    user = relationship("User", backref="documents")
     job = relationship("Job", back_populates="documents")
 
 
-class Personal(Base):
-    __tablename__ = "personal"
+# User models (normalized)
+class User(Base):
+    __tablename__ = "users"
 
-    first_name = Column(String(92), primary_key=True)
-    last_name = Column(String(92), primary_key=True)
+    user_id = Column(Integer, primary_key=True, index=True)
+    first_name = Column(String(92))
+    last_name = Column(String(92))
+    login = Column(String(64), unique=True, nullable=False)
+    passwd = Column(String(255), nullable=False)
     email = Column(String(255))
+    is_admin = Column(Boolean, default=False)
+
+    # Relationships
+    detail = relationship("UserDetail", back_populates="user", uselist=False)
+    addresses = relationship("UserAddress", back_populates="user")
+    settings = relationship("UserSetting", back_populates="user", uselist=False)
+
+
+class UserDetail(Base):
+    __tablename__ = "user_detail"
+
+    user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), primary_key=True)
     phone = Column(String(24))
     linkedin_url = Column(String(255))
     github_url = Column(String(255))
     website_url = Column(String(255))
     portfolio_url = Column(String(255))
+
+    # Relationships
+    user = relationship("User", back_populates="detail")
+
+
+class Address(Base):
+    __tablename__ = "address"
+
+    address_id = Column(Integer, primary_key=True, index=True)
     address_1 = Column(String(255))
     address_2 = Column(String(255))
     city = Column(String(128))
     state = Column(String(64))
     zip = Column(String(16))
     country = Column(String(64))
-    login = Column(String(64))
-    passwd = Column(String(64))
-    no_response_week = Column(SmallInteger)
+
+    # Relationships
+    user_addresses = relationship("UserAddress", back_populates="address")
+
+
+class UserAddress(Base):
+    __tablename__ = "user_address"
+
+    user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), primary_key=True)
+    address_id = Column(Integer, ForeignKey("address.address_id", ondelete="CASCADE"), primary_key=True)
+    is_default = Column(Boolean, default=False)
+    address_type = Column(String(32))
+
+    # Relationships
+    user = relationship("User", back_populates="addresses")
+    address = relationship("Address", back_populates="user_addresses")
+
+
+class UserSetting(Base):
+    __tablename__ = "user_setting"
+
+    user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), primary_key=True)
+    no_response_week = Column(SmallInteger, default=6)
     default_llm = Column(String(32))
     resume_extract_llm = Column(String(32))
     job_extract_llm = Column(String(32))
@@ -298,6 +359,9 @@ class Personal(Base):
     html2docx = Column(String(32))
     html2odt = Column(String(32))
     html2pdf = Column(String(32))
+
+    # Relationships
+    user = relationship("User", back_populates="settings")
 
 class Process(Base):
 	__tablename__ = "process"
@@ -316,6 +380,7 @@ class Company(Base):
 	__tablename__ = "company"
 
 	company_id = Column(Integer, primary_key=True, index=True)
+	user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
 	company_name = Column(String(128), nullable=False)
 	website_url = Column(String(255))
 	hq_city = Column(String(128))
@@ -329,6 +394,24 @@ class Company(Base):
 	company_created = Column(DateTime(timezone=False), server_default=func.current_timestamp())
 
 	# Relationships
+	user = relationship("User", backref="companies")
 	job = relationship("Job", foreign_keys=[job_id])
 
+
+class Reminder(Base):
+	__tablename__ = "reminder"
+
+	reminder_id = Column(Integer, primary_key=True, index=True)
+	user_id = Column(Integer, ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False)
+	job_id = Column(Integer, ForeignKey("job.job_id", ondelete="CASCADE"))
+	reminder_date = Column(Date, nullable=False)
+	reminder_time = Column(Time)
+	reminder_message = Column(Text)
+	reminder_dismissed = Column(Boolean, default=False)
+	reminder_created = Column(DateTime(timezone=False), server_default=func.current_timestamp())
+	reminder_updated = Column(DateTime(timezone=False))
+
+	# Relationships
+	user = relationship("User", backref="reminders")
+	job = relationship("Job", backref="reminders")
 

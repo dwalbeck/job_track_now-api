@@ -4,28 +4,30 @@ import mimetypes
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from .logger import logger
+from .user_helper import get_user_name
 
 
-def get_personal_name(db: Session) -> tuple[str, str]:
+def get_personal_name(db: Session, user_id: int) -> tuple[str, str]:
     """
-    Get the user's first and last name from the personal table.
+    Get the user's first and last name.
+
+    Args:
+        db: Database session
+        user_id: The user's ID (required)
 
     Returns:
         Tuple of (first_name, last_name). Returns empty strings if not found.
-    """
-    try:
-        query = text("""
-            SELECT first_name, last_name FROM personal
-            WHERE first_name IS NOT NULL
-            LIMIT 1
-        """)
-        result = db.execute(query).first()
 
-        if result:
-            return (result.first_name or "", result.last_name or "")
-        return ("", "")
+    Raises:
+        ValueError: If user_id is not provided
+    """
+    if not user_id:
+        raise ValueError("user_id is required")
+
+    try:
+        return get_user_name(db, user_id)
     except Exception as e:
-        logger.error(f"Error fetching personal name", error=str(e))
+        logger.error(f"Error fetching user name", user_id=user_id, error=str(e))
         return ("", "")
 
 
@@ -59,7 +61,8 @@ def get_mime_type(file_path: str) -> str:
 def create_standardized_download_file(
     source_file_path: str,
     file_type: str,
-    db: Session
+    db: Session,
+    user_id: int
 ) -> tuple[str, str, str]:
     """
     Copy a file to /tmp with standardized naming for download.
@@ -68,12 +71,19 @@ def create_standardized_download_file(
         source_file_path: Original file path
         file_type: Either 'resume' or 'cover_letter'
         db: Database session
+        user_id: The user's ID (required)
 
     Returns:
         Tuple of (tmp_file_path, download_filename, mime_type)
+
+    Raises:
+        ValueError: If user_id is not provided
     """
+    if not user_id:
+        raise ValueError("user_id is required")
+
     # Get user's name
-    first_name, last_name = get_personal_name(db)
+    first_name, last_name = get_personal_name(db, user_id)
 
     # Create name parts
     name_part = f"{first_name}_{last_name}".lower().replace(" ", "_")

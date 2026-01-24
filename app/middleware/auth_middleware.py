@@ -47,6 +47,12 @@ async def get_current_user(
         )
 
     logger.debug("User authenticated", username=payload.get("preferred_username"))
+
+    user_id = payload.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid token: missing user_id")
+
+    # Return the full payload dict so callers can use payload.get("user_id")
     return payload
 
 

@@ -23,18 +23,21 @@ class TestGetPersonalName:
         mock_result.last_name = "Doe"
         mock_db.execute.return_value.first.return_value = mock_result
 
-        first_name, last_name = get_personal_name(mock_db)
+        with patch('app.utils.file_helpers.get_user_name') as mock_get_user_name:
+            mock_get_user_name.return_value = ("John", "Doe")
+            first_name, last_name = get_personal_name(mock_db, user_id=1)
 
         assert first_name == "John"
         assert last_name == "Doe"
-        mock_db.execute.assert_called_once()
+        mock_get_user_name.assert_called_once_with(mock_db, 1)
 
     def test_get_personal_name_no_result(self):
-        """Test getting personal name when no records exist."""
+        """Test getting personal name when user not found."""
         mock_db = Mock()
-        mock_db.execute.return_value.first.return_value = None
 
-        first_name, last_name = get_personal_name(mock_db)
+        with patch('app.utils.file_helpers.get_user_name') as mock_get_user_name:
+            mock_get_user_name.return_value = ("", "")
+            first_name, last_name = get_personal_name(mock_db, user_id=1)
 
         assert first_name == ""
         assert last_name == ""
@@ -42,12 +45,10 @@ class TestGetPersonalName:
     def test_get_personal_name_null_first_name(self):
         """Test getting personal name when first_name is NULL."""
         mock_db = Mock()
-        mock_result = Mock()
-        mock_result.first_name = None
-        mock_result.last_name = "Doe"
-        mock_db.execute.return_value.first.return_value = mock_result
 
-        first_name, last_name = get_personal_name(mock_db)
+        with patch('app.utils.file_helpers.get_user_name') as mock_get_user_name:
+            mock_get_user_name.return_value = ("", "Doe")
+            first_name, last_name = get_personal_name(mock_db, user_id=1)
 
         assert first_name == ""
         assert last_name == "Doe"
@@ -55,12 +56,10 @@ class TestGetPersonalName:
     def test_get_personal_name_null_last_name(self):
         """Test getting personal name when last_name is NULL."""
         mock_db = Mock()
-        mock_result = Mock()
-        mock_result.first_name = "John"
-        mock_result.last_name = None
-        mock_db.execute.return_value.first.return_value = mock_result
 
-        first_name, last_name = get_personal_name(mock_db)
+        with patch('app.utils.file_helpers.get_user_name') as mock_get_user_name:
+            mock_get_user_name.return_value = ("John", "")
+            first_name, last_name = get_personal_name(mock_db, user_id=1)
 
         assert first_name == "John"
         assert last_name == ""
@@ -68,12 +67,10 @@ class TestGetPersonalName:
     def test_get_personal_name_both_null(self):
         """Test getting personal name when both names are NULL."""
         mock_db = Mock()
-        mock_result = Mock()
-        mock_result.first_name = None
-        mock_result.last_name = None
-        mock_db.execute.return_value.first.return_value = mock_result
 
-        first_name, last_name = get_personal_name(mock_db)
+        with patch('app.utils.file_helpers.get_user_name') as mock_get_user_name:
+            mock_get_user_name.return_value = ("", "")
+            first_name, last_name = get_personal_name(mock_db, user_id=1)
 
         assert first_name == ""
         assert last_name == ""
@@ -81,9 +78,10 @@ class TestGetPersonalName:
     def test_get_personal_name_database_error(self):
         """Test getting personal name when database error occurs."""
         mock_db = Mock()
-        mock_db.execute.side_effect = Exception("Database connection failed")
 
-        first_name, last_name = get_personal_name(mock_db)
+        with patch('app.utils.file_helpers.get_user_name') as mock_get_user_name:
+            mock_get_user_name.side_effect = Exception("Database connection failed")
+            first_name, last_name = get_personal_name(mock_db, user_id=1)
 
         # Should return empty strings on error
         assert first_name == ""
@@ -92,16 +90,23 @@ class TestGetPersonalName:
     def test_get_personal_name_with_spaces(self):
         """Test getting personal name with extra spaces."""
         mock_db = Mock()
-        mock_result = Mock()
-        mock_result.first_name = "  John  "
-        mock_result.last_name = "  Doe  "
-        mock_db.execute.return_value.first.return_value = mock_result
 
-        first_name, last_name = get_personal_name(mock_db)
+        with patch('app.utils.file_helpers.get_user_name') as mock_get_user_name:
+            mock_get_user_name.return_value = ("  John  ", "  Doe  ")
+            first_name, last_name = get_personal_name(mock_db, user_id=1)
 
         # Function returns as-is, doesn't strip
         assert first_name == "  John  "
         assert last_name == "  Doe  "
+
+    def test_get_personal_name_no_user_id(self):
+        """Test that get_personal_name raises error when user_id is not provided."""
+        mock_db = Mock()
+
+        with pytest.raises(ValueError) as excinfo:
+            get_personal_name(mock_db, user_id=None)
+
+        assert "user_id is required" in str(excinfo.value)
 
 
 class TestGetFileExtension:
@@ -206,14 +211,13 @@ class TestCreateStandardizedDownloadFile:
         try:
             # Mock database
             mock_db = Mock()
-            mock_result = Mock()
-            mock_result.first_name = "John"
-            mock_result.last_name = "Doe"
-            mock_db.execute.return_value.first.return_value = mock_result
 
-            tmp_path, download_name, mime_type = create_standardized_download_file(
-                src_path, "resume", mock_db
-            )
+            with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
+                mock_get_name.return_value = ("John", "Doe")
+
+                tmp_path, download_name, mime_type = create_standardized_download_file(
+                    src_path, "resume", mock_db, user_id=1
+                )
 
             assert download_name == "resume-john_doe.pdf"
             assert mime_type == "application/pdf"
@@ -238,14 +242,13 @@ class TestCreateStandardizedDownloadFile:
         try:
             # Mock database
             mock_db = Mock()
-            mock_result = Mock()
-            mock_result.first_name = "Jane"
-            mock_result.last_name = "Smith"
-            mock_db.execute.return_value.first.return_value = mock_result
 
-            tmp_path, download_name, mime_type = create_standardized_download_file(
-                src_path, "cover_letter", mock_db
-            )
+            with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
+                mock_get_name.return_value = ("Jane", "Smith")
+
+                tmp_path, download_name, mime_type = create_standardized_download_file(
+                    src_path, "cover_letter", mock_db, user_id=1
+                )
 
             # Cover letters should always use .docx extension
             assert download_name == "cover_letter-jane_smith.docx"
@@ -269,14 +272,13 @@ class TestCreateStandardizedDownloadFile:
         try:
             # Mock database
             mock_db = Mock()
-            mock_result = Mock()
-            mock_result.first_name = "Test"
-            mock_result.last_name = "User"
-            mock_db.execute.return_value.first.return_value = mock_result
 
-            tmp_path, download_name, mime_type = create_standardized_download_file(
-                src_path, "cover_letter", mock_db
-            )
+            with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
+                mock_get_name.return_value = ("Test", "User")
+
+                tmp_path, download_name, mime_type = create_standardized_download_file(
+                    src_path, "cover_letter", mock_db, user_id=1
+                )
 
             # Should use .docx even though source is .pdf
             assert download_name == "cover_letter-test_user.docx"
@@ -296,14 +298,13 @@ class TestCreateStandardizedDownloadFile:
 
         try:
             mock_db = Mock()
-            mock_result = Mock()
-            mock_result.first_name = "Alex"
-            mock_result.last_name = "Johnson"
-            mock_db.execute.return_value.first.return_value = mock_result
 
-            tmp_path, download_name, mime_type = create_standardized_download_file(
-                src_path, "custom_document", mock_db
-            )
+            with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
+                mock_get_name.return_value = ("Alex", "Johnson")
+
+                tmp_path, download_name, mime_type = create_standardized_download_file(
+                    src_path, "custom_document", mock_db, user_id=1
+                )
 
             assert download_name == "custom_document-alex_johnson.txt"
             assert mime_type == "text/plain"
@@ -322,14 +323,13 @@ class TestCreateStandardizedDownloadFile:
 
         try:
             mock_db = Mock()
-            mock_result = Mock()
-            mock_result.first_name = "Mary Jane"
-            mock_result.last_name = "Watson Parker"
-            mock_db.execute.return_value.first.return_value = mock_result
 
-            tmp_path, download_name, mime_type = create_standardized_download_file(
-                src_path, "resume", mock_db
-            )
+            with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
+                mock_get_name.return_value = ("Mary Jane", "Watson Parker")
+
+                tmp_path, download_name, mime_type = create_standardized_download_file(
+                    src_path, "resume", mock_db, user_id=1
+                )
 
             # Spaces should be replaced with underscores
             assert download_name == "resume-mary_jane_watson_parker.pdf"
@@ -348,14 +348,13 @@ class TestCreateStandardizedDownloadFile:
 
         try:
             mock_db = Mock()
-            mock_result = Mock()
-            mock_result.first_name = "JOHN"
-            mock_result.last_name = "DOE"
-            mock_db.execute.return_value.first.return_value = mock_result
 
-            tmp_path, download_name, mime_type = create_standardized_download_file(
-                src_path, "resume", mock_db
-            )
+            with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
+                mock_get_name.return_value = ("JOHN", "DOE")
+
+                tmp_path, download_name, mime_type = create_standardized_download_file(
+                    src_path, "resume", mock_db, user_id=1
+                )
 
             # Name should be lowercase
             assert download_name == "resume-john_doe.pdf"
@@ -369,15 +368,14 @@ class TestCreateStandardizedDownloadFile:
     def test_create_standardized_download_file_source_not_found(self):
         """Test creating file when source doesn't exist."""
         mock_db = Mock()
-        mock_result = Mock()
-        mock_result.first_name = "John"
-        mock_result.last_name = "Doe"
-        mock_db.execute.return_value.first.return_value = mock_result
 
-        with pytest.raises(Exception):
-            create_standardized_download_file(
-                "/nonexistent/file.pdf", "resume", mock_db
-            )
+        with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
+            mock_get_name.return_value = ("John", "Doe")
+
+            with pytest.raises(Exception):
+                create_standardized_download_file(
+                    "/nonexistent/file.pdf", "resume", mock_db, user_id=1
+                )
 
     def test_create_standardized_download_file_empty_name(self):
         """Test creating file when user has no name."""
@@ -387,14 +385,13 @@ class TestCreateStandardizedDownloadFile:
 
         try:
             mock_db = Mock()
-            mock_result = Mock()
-            mock_result.first_name = ""
-            mock_result.last_name = ""
-            mock_db.execute.return_value.first.return_value = mock_result
 
-            tmp_path, download_name, mime_type = create_standardized_download_file(
-                src_path, "resume", mock_db
-            )
+            with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
+                mock_get_name.return_value = ("", "")
+
+                tmp_path, download_name, mime_type = create_standardized_download_file(
+                    src_path, "resume", mock_db, user_id=1
+                )
 
             # Should still work with empty name
             assert download_name == "resume-_.pdf"
@@ -405,25 +402,21 @@ class TestCreateStandardizedDownloadFile:
             if os.path.exists(src_path):
                 os.unlink(src_path)
 
-    def test_create_standardized_download_file_db_error(self):
-        """Test creating file when database error occurs."""
+    def test_create_standardized_download_file_no_user_id(self):
+        """Test that create_standardized_download_file raises error when user_id is not provided."""
         with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as src:
             src.write(b"Content")
             src_path = src.name
 
         try:
             mock_db = Mock()
-            mock_db.execute.side_effect = Exception("Database error")
 
-            # Should still work with empty name (from error handling)
-            tmp_path, download_name, mime_type = create_standardized_download_file(
-                src_path, "resume", mock_db
-            )
+            with pytest.raises(ValueError) as excinfo:
+                create_standardized_download_file(
+                    src_path, "resume", mock_db, user_id=None
+                )
 
-            assert download_name == "resume-_.pdf"
-
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
+            assert "user_id is required" in str(excinfo.value)
         finally:
             if os.path.exists(src_path):
                 os.unlink(src_path)
@@ -439,14 +432,13 @@ class TestCreateStandardizedDownloadFile:
 
             try:
                 mock_db = Mock()
-                mock_result = Mock()
-                mock_result.first_name = "Test"
-                mock_result.last_name = "User"
-                mock_db.execute.return_value.first.return_value = mock_result
 
-                tmp_path, download_name, mime_type = create_standardized_download_file(
-                    src_path, "resume", mock_db
-                )
+                with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
+                    mock_get_name.return_value = ("Test", "User")
+
+                    tmp_path, download_name, mime_type = create_standardized_download_file(
+                        src_path, "resume", mock_db, user_id=1
+                    )
 
                 assert download_name.endswith(ext)
                 assert os.path.exists(tmp_path)

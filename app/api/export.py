@@ -8,12 +8,16 @@ from sqlalchemy import text
 from ..core.database import get_db
 from ..core.config import settings
 from ..utils.logger import logger
+from ..middleware.auth_middleware import get_current_user
 
 router = APIRouter()
 
 
 @router.get("/export/job", status_code=status.HTTP_200_OK)
-async def export_jobs(db: Session = Depends(get_db)):
+async def export_jobs(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Export all job data to a CSV file.
 
@@ -25,17 +29,18 @@ async def export_jobs(db: Session = Depends(get_db)):
             - job_export_dir: The directory path where the file was saved
             - job_export_file: The filename of the exported CSV
     """
+    user_id = current_user.get("user_id")
     try:
-        # Execute the query to get all job data
+        # Execute the query to get all job data for this user
         query = text("""
             SELECT j.*, jd.job_desc, jd.job_qualification, jd.job_keyword
             FROM job j
             LEFT JOIN job_detail jd ON (j.job_id = jd.job_id)
-            WHERE j.job_id > 0
+            WHERE j.user_id = :user_id
             ORDER BY j.job_created DESC
         """)
 
-        results = db.execute(query).fetchall()
+        results = db.execute(query, {"user_id": user_id}).fetchall()
 
         if not results:
             raise HTTPException(
@@ -83,7 +88,8 @@ async def export_jobs(db: Session = Depends(get_db)):
 
         logger.info(f"Job data exported successfully",
                    file_path=file_path,
-                   row_count=len(results))
+                   row_count=len(results),
+                   user_id=user_id)
 
         return {
             "job_export_dir": export_dir,
@@ -93,7 +99,7 @@ async def export_jobs(db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error exporting job data", error=str(e))
+        logger.error(f"Error exporting job data", error=str(e), user_id=user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error exporting job data: {str(e)}"
@@ -101,7 +107,10 @@ async def export_jobs(db: Session = Depends(get_db)):
 
 
 @router.get("/export/contacts", status_code=status.HTTP_200_OK)
-async def export_contacts(db: Session = Depends(get_db)):
+async def export_contacts(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Export all contact data to a CSV file.
 
@@ -113,15 +122,16 @@ async def export_contacts(db: Session = Depends(get_db)):
             - contact_export_dir: The directory path where the file was saved
             - contact_export_file: The filename of the exported CSV
     """
+    user_id = current_user.get("user_id")
     try:
-        # Execute the query to get all contact data
+        # Execute the query to get all contact data for this user
         query = text("""
             SELECT * FROM contact
-            WHERE contact_id > 0
-            ORDER BY contact_created DESC
+            WHERE user_id = :user_id
+            ORDER BY first_name, last_name
         """)
 
-        results = db.execute(query).fetchall()
+        results = db.execute(query, {"user_id": user_id}).fetchall()
 
         if not results:
             raise HTTPException(
@@ -168,7 +178,8 @@ async def export_contacts(db: Session = Depends(get_db)):
 
         logger.info(f"Contact data exported successfully",
                    file_path=file_path,
-                   row_count=len(results))
+                   row_count=len(results),
+                   user_id=user_id)
 
         return {
             "contact_export_dir": export_dir,
@@ -178,7 +189,7 @@ async def export_contacts(db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error exporting contact data", error=str(e))
+        logger.error(f"Error exporting contact data", error=str(e), user_id=user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error exporting contact data: {str(e)}"
@@ -186,7 +197,10 @@ async def export_contacts(db: Session = Depends(get_db)):
 
 
 @router.get("/export/notes", status_code=status.HTTP_200_OK)
-async def export_notes(db: Session = Depends(get_db)):
+async def export_notes(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Export all note data to a CSV file.
 
@@ -198,15 +212,16 @@ async def export_notes(db: Session = Depends(get_db)):
             - note_export_dir: The directory path where the file was saved
             - note_export_file: The filename of the exported CSV
     """
+    user_id = current_user.get("user_id")
     try:
-        # Execute the query to get all note data
+        # Execute the query to get all note data for this user
         query = text("""
             SELECT * FROM note
-            WHERE note_id > 0
+            WHERE user_id = :user_id
             ORDER BY note_created DESC
         """)
 
-        results = db.execute(query).fetchall()
+        results = db.execute(query, {"user_id": user_id}).fetchall()
 
         if not results:
             raise HTTPException(
@@ -253,7 +268,8 @@ async def export_notes(db: Session = Depends(get_db)):
 
         logger.info(f"Note data exported successfully",
                    file_path=file_path,
-                   row_count=len(results))
+                   row_count=len(results),
+                   user_id=user_id)
 
         return {
             "note_export_dir": export_dir,
@@ -263,7 +279,7 @@ async def export_notes(db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error exporting note data", error=str(e))
+        logger.error(f"Error exporting note data", error=str(e), user_id=user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error exporting note data: {str(e)}"
@@ -271,7 +287,10 @@ async def export_notes(db: Session = Depends(get_db)):
 
 
 @router.get("/export/calendar", status_code=status.HTTP_200_OK)
-async def export_calendar(db: Session = Depends(get_db)):
+async def export_calendar(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Export all calendar data to a CSV file.
 
@@ -283,15 +302,16 @@ async def export_calendar(db: Session = Depends(get_db)):
             - calendar_export_dir: The directory path where the file was saved
             - calendar_export_file: The filename of the exported CSV
     """
+    user_id = current_user.get("user_id")
     try:
-        # Execute the query to get all calendar data
+        # Execute the query to get all calendar data for this user
         query = text("""
             SELECT * FROM calendar
-            WHERE note_id > 0
+            WHERE user_id = :user_id
             ORDER BY start_date DESC
         """)
 
-        results = db.execute(query).fetchall()
+        results = db.execute(query, {"user_id": user_id}).fetchall()
 
         if not results:
             raise HTTPException(
@@ -338,7 +358,8 @@ async def export_calendar(db: Session = Depends(get_db)):
 
         logger.info(f"Calendar data exported successfully",
                    file_path=file_path,
-                   row_count=len(results))
+                   row_count=len(results),
+                   user_id=user_id)
 
         return {
             "calendar_export_dir": export_dir,
@@ -348,7 +369,7 @@ async def export_calendar(db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error exporting calendar data", error=str(e))
+        logger.error(f"Error exporting calendar data", error=str(e), user_id=user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error exporting calendar data: {str(e)}"
@@ -356,7 +377,10 @@ async def export_calendar(db: Session = Depends(get_db)):
 
 
 @router.get("/export/resumes", status_code=status.HTTP_200_OK)
-async def export_resumes(db: Session = Depends(get_db)):
+async def export_resumes(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Export all resume data to a CSV file.
 
@@ -368,16 +392,17 @@ async def export_resumes(db: Session = Depends(get_db)):
             - resume_export_dir: The directory path where the file was saved
             - resume_export_file: The filename of the exported CSV
     """
+    user_id = current_user.get("user_id")
     try:
-        # Execute the query to get all resume data
+        # Execute the query to get all resume data for this user
         query = text("""
             SELECT * FROM resume r
             LEFT JOIN resume_detail rd ON (r.resume_id = rd.resume_id)
-            WHERE r.resume_id > 0
+            WHERE r.user_id = :user_id
             ORDER BY r.is_baseline, r.resume_created DESC
         """)
 
-        results = db.execute(query).fetchall()
+        results = db.execute(query, {"user_id": user_id}).fetchall()
 
         if not results:
             raise HTTPException(
@@ -424,7 +449,8 @@ async def export_resumes(db: Session = Depends(get_db)):
 
         logger.info(f"Resume data exported successfully",
                    file_path=file_path,
-                   row_count=len(results))
+                   row_count=len(results),
+                   user_id=user_id)
 
         return {
             "resume_export_dir": export_dir,
@@ -434,7 +460,7 @@ async def export_resumes(db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error exporting resume data", error=str(e))
+        logger.error(f"Error exporting resume data", error=str(e), user_id=user_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error exporting resume data: {str(e)}"

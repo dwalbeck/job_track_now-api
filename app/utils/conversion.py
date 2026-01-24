@@ -31,24 +31,33 @@ class Conversion:
         return Path(cls.RESUME_DIR) / file_name
 
     @classmethod
-    def _get_convertapi_key(cls) -> Optional[str]:
+    def _get_convertapi_key(cls, user_id: int) -> Optional[str]:
         """
         Retrieve ConvertAPI key from database.
 
+        Args:
+            user_id: The user's ID (required)
+
         Returns:
             API key string if found and valid, None otherwise
+
+        Raises:
+            ValueError: If user_id is not provided
         """
+        if not user_id:
+            raise ValueError("user_id is required to retrieve ConvertAPI key")
+
         from ..core.database import SessionLocal
-        from sqlalchemy import text
+        from .user_helper import get_user_settings
 
         db = SessionLocal()
         try:
-            query = text("SELECT convertapi_key FROM personal LIMIT 1")
-            result = db.execute(query).first()
-            if not result or not result.convertapi_key:
-                logger.error("ConvertAPI key not found in database")
+            settings = get_user_settings(db, user_id)
+            if not settings or not settings.get('convertapi_key'):
+                logger.error("ConvertAPI key not found in database", user_id=user_id)
                 return None
-            api_key = result.convertapi_key.strip() if result.convertapi_key else None
+
+            api_key = settings['convertapi_key'].strip() if settings['convertapi_key'] else None
             if not api_key:
                 logger.error("ConvertAPI key is empty after stripping")
                 return None
@@ -1887,11 +1896,11 @@ class Conversion:
     # ========================================================================================
 
     @classmethod
-    def convert_file(cls, source_format: str, target_format: str, input_path: str, output_path: str) -> bool:
+    def convert_file(cls, source_format: str, target_format: str, input_path: str, output_path: str, user_id: int) -> bool:
         """
         Convert a file from source format to target format using the configured conversion method.
 
-        This routing method reads conversion preferences from the personal table for HTML conversions
+        This routing method reads conversion preferences from the user_setting table for HTML conversions
         and uses fixed methods for Markdown conversions.
 
         Args:
@@ -1899,9 +1908,13 @@ class Conversion:
             target_format: Target file format (e.g., 'html', 'docx', 'odt', 'pdf', 'md')
             input_path: Full path to input file
             output_path: Full path for output file
+            user_id: The user's ID (required for HTML conversions)
 
         Returns:
             True if conversion successful, False otherwise
+
+        Raises:
+            ValueError: If user_id is not provided for HTML conversions
 
         Supported conversions:
             - docx -> md (uses pandoc)
@@ -1927,7 +1940,7 @@ class Conversion:
 
             logger.debug(f"Convert file called", source_format=source_format, target_format=target_format, conversion_key=conversion_key)
 
-            # Handle conversions to Markdown (not in personal table)
+            # Handle conversions to Markdown (not in user_setting table - doesn't require user_id)
             if target_format == 'md':
                 if source_format == 'docx':
                     # Use pandoc for DOCX to MD
@@ -1959,21 +1972,23 @@ class Conversion:
                     logger.error(f"Unsupported conversion to markdown: {source_format}2md")
                     return False
 
+            # For HTML conversions, user_id is required to get user settings
+            if not user_id:
+                raise ValueError("user_id is required for HTML conversions")
+
             # Get conversion preference from database for HTML conversions
             from ..core.database import SessionLocal
-            from sqlalchemy import text
+            from .user_helper import get_user_settings
 
             db = SessionLocal()
             try:
-                query = text(f"SELECT {conversion_key} FROM personal LIMIT 1")
-                result = db.execute(query).first()
-
-                if not result:
-                    logger.error("No personal settings found in database")
+                settings = get_user_settings(db, user_id)
+                if not settings:
+                    logger.error("No user settings found in database", user_id=user_id)
                     return False
 
                 # Get the preferred conversion method
-                preferred_method = getattr(result, conversion_key, None)
+                preferred_method = settings.get(conversion_key)
                 logger.debug(f"preferred method", method=preferred_method)
 
             finally:

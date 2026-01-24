@@ -40,25 +40,46 @@ def test_db(test_engine):
 
     # Clean all tables before each test in correct order (respecting foreign keys)
     try:
-        session.execute(text("TRUNCATE TABLE communication, document, note, calendar, job_contact, contact, cover_letter, resume_detail, job_detail, resume, job, process, personal, company RESTART IDENTITY CASCADE"))
+        session.execute(text("TRUNCATE TABLE communication, document, note, calendar, job_contact, contact, cover_letter, resume_detail, job_detail, resume, job, process, personal, company, user_setting, user_address, user_detail, address RESTART IDENTITY CASCADE"))
+        # Don't truncate users - just delete non-test users
+        session.execute(text("DELETE FROM users WHERE login != 'testuser'"))
         session.commit()
     except Exception as e:
         session.rollback()
         # Tables might not exist yet, ignore errors
         pass
 
-    # Insert test personal settings (use INSERT ... ON CONFLICT to handle duplicates)
+    # Insert test user (use INSERT ... ON CONFLICT to handle duplicates)
     session.execute(text("""
-        INSERT INTO personal (first_name, last_name,
-                            resume_extract_llm, job_extract_llm, rewrite_llm, cover_llm, company_llm,
+        INSERT INTO users (first_name, last_name, login, passwd, email, is_admin)
+        VALUES ('Test', 'User', 'testuser', 'testpass', 'test@example.com', false)
+        ON CONFLICT DO NOTHING
+    """))
+    session.commit()
+
+    # Get the test user's ID
+    user_result = session.execute(text("SELECT user_id FROM users WHERE login = 'testuser'")).first()
+    test_user_id = user_result.user_id if user_result else 1
+
+    # Insert test user settings
+    session.execute(text("""
+        INSERT INTO user_setting (user_id, no_response_week,
+                            default_llm, resume_extract_llm, job_extract_llm, rewrite_llm, cover_llm, company_llm, tools_llm,
                             docx2html, odt2html, pdf2html,
                             html2docx, html2odt, html2pdf)
-        VALUES ('Test', 'User',
-                'gpt-4.1-mini', 'gpt-4.1-mini', 'gpt-4.1-mini', 'gpt-4.1-mini', 'gpt-4.1-mini',
+        VALUES (:user_id, 6,
+                'gpt-4.1-mini', 'gpt-4.1-mini', 'gpt-4.1-mini', 'gpt-4.1-mini', 'gpt-4.1-mini', 'gpt-4.1-mini', 'gpt-4.1-mini',
                 'docx-parser-converter', 'pandoc', 'markitdown',
                 'html4docx', 'pandoc', 'weasyprint')
-        ON CONFLICT (first_name, last_name) DO NOTHING
-    """))
+        ON CONFLICT (user_id) DO NOTHING
+    """), {"user_id": test_user_id})
+
+    # Insert test user detail
+    session.execute(text("""
+        INSERT INTO user_detail (user_id, phone, linkedin_url, github_url, website_url, portfolio_url)
+        VALUES (:user_id, '(555) 123-4567', NULL, NULL, NULL, NULL)
+        ON CONFLICT (user_id) DO NOTHING
+    """), {"user_id": test_user_id})
     session.commit()
 
     yield session

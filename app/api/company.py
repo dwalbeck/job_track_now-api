@@ -1,6 +1,7 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 import shutil
 
 from ..core.database import get_db, SessionLocal
@@ -8,56 +9,71 @@ from ..models.models import Company, Job, Process
 from ..schemas.company import CompanyCreate, CompanyUpdate, CompanyResponse
 from ..utils.logger import logger
 from ..utils.ai_agent import AiAgent
+from ..middleware.auth_middleware import get_current_user
 import threading
 
 router = APIRouter()
 
 
 @router.post("/company", status_code=status.HTTP_200_OK)
-async def create_company(company_data: CompanyCreate, db: Session = Depends(get_db)):
+async def create_company(
+    company_data: CompanyCreate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Create a new company record.
     company_name is required, job_id is required.
 
     If a company record already exists for the given job_id, returns the existing company_id.
     """
-    logger.info(f"Attempting to create company", company_name=company_data.company_name, job_id=company_data.job_id)
+    user_id = current_user.get("user_id")
+    logger.info(f"Attempting to create company", company_name=company_data.company_name, job_id=company_data.job_id, user_id=user_id)
 
     # Verify job_id is provided (now required due to NOT NULL constraint)
     if not company_data.job_id:
-        logger.warning(f"Job ID is required")
+        logger.warning(f"Job ID is required", user_id=user_id)
         raise HTTPException(status_code=400, detail="job_id is required")
 
-    # Verify job exists
-    job = db.query(Job).filter(Job.job_id == company_data.job_id).first()
+    # Verify job exists and belongs to user
+    job = db.query(Job).filter(Job.job_id == company_data.job_id, Job.user_id == user_id).first()
     if not job:
-        logger.warning(f"Job not found", job_id=company_data.job_id)
+        logger.warning(f"Job not found", job_id=company_data.job_id, user_id=user_id)
         raise HTTPException(status_code=404, detail=f"Job with id {company_data.job_id} not found")
 
-    # Check if company record already exists for this job_id
-    existing_company = db.query(Company).filter(Company.job_id == company_data.job_id).first()
+    # Check if company record already exists for this job_id and user
+    existing_company = db.query(Company).filter(
+        Company.job_id == company_data.job_id,
+        Company.user_id == user_id
+    ).first()
     if existing_company:
         logger.info(f"Company record already exists for job_id",
                    job_id=company_data.job_id,
                    company_id=existing_company.company_id,
-                   company_name=existing_company.company_name)
+                   company_name=existing_company.company_name,
+                   user_id=user_id)
         return {"status": "success", "company_id": existing_company.company_id, "existed": True}
 
-    # Create new company
+    # Create new company with user_id
     company_dict = company_data.dict(exclude_unset=True)
+    company_dict['user_id'] = user_id
     company = Company(**company_dict)
     db.add(company)
     db.commit()
     db.refresh(company)
 
     logger.log_database_operation("INSERT", "company", company.company_id)
-    logger.info(f"Company created successfully", company_id=company.company_id, company_name=company.company_name)
+    logger.info(f"Company created successfully", company_id=company.company_id, company_name=company.company_name, user_id=user_id)
 
     return {"status": "success", "company_id": company.company_id, "existed": False}
 
 
 @router.put("/company", status_code=status.HTTP_200_OK)
-async def update_company(company_data: CompanyUpdate, db: Session = Depends(get_db)):
+async def update_company(
+    company_data: CompanyUpdate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Update an existing company record.
     company_id is required to identify the record.
@@ -70,19 +86,23 @@ async def update_company(company_data: CompanyUpdate, db: Session = Depends(get_
     import requests
     import mimetypes
 
-    logger.info(f"Attempting to update company", company_id=company_data.company_id)
+    user_id = current_user.get("user_id")
+    logger.info(f"Attempting to update company", company_id=company_data.company_id, user_id=user_id)
 
-    # Find the company
-    company = db.query(Company).filter(Company.company_id == company_data.company_id).first()
+    # Find the company - ensure it belongs to user
+    company = db.query(Company).filter(
+        Company.company_id == company_data.company_id,
+        Company.user_id == user_id
+    ).first()
     if not company:
-        logger.warning(f"Company not found for update", company_id=company_data.company_id)
+        logger.warning(f"Company not found for update", company_id=company_data.company_id, user_id=user_id)
         raise HTTPException(status_code=404, detail=f"Company with id {company_data.company_id} not found")
 
-    # Verify job exists if job_id is provided
+    # Verify job exists and belongs to user if job_id is provided
     if company_data.job_id:
-        job = db.query(Job).filter(Job.job_id == company_data.job_id).first()
+        job = db.query(Job).filter(Job.job_id == company_data.job_id, Job.user_id == user_id).first()
         if not job:
-            logger.warning(f"Job not found", job_id=company_data.job_id)
+            logger.warning(f"Job not found", job_id=company_data.job_id, user_id=user_id)
             raise HTTPException(status_code=404, detail=f"Job with id {company_data.job_id} not found")
 
     # Handle company_logo_url if provided
@@ -126,7 +146,7 @@ async def update_company(company_data: CompanyUpdate, db: Session = Depends(get_
             # Don't fail the update if logo download fails
 
     # Update fields that are provided (excluding company_id and company_logo_url)
-    update_data = company_data.dict(exclude_unset=True, exclude={'company_id', 'company_logo_url'})
+    update_data = company_data.model_dump(exclude_unset=True, exclude={'company_id', 'company_logo_url'})
     for field, value in update_data.items():
         setattr(company, field, value)
 
@@ -140,15 +160,22 @@ async def update_company(company_data: CompanyUpdate, db: Session = Depends(get_
 
 
 @router.get("/company/list")
-async def get_company_list(db: Session = Depends(get_db)):
+async def get_company_list(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Retrieve list of all company reports.
 
     Returns companies that have report_html content, ordered by company_name.
     """
-    logger.info("Fetching company list")
+    user_id = current_user.get("user_id")
+    logger.info("Fetching company list", user_id=user_id)
 
-    companies = db.query(Company).filter(Company.report_html.isnot(None), Company.report_html != '').order_by(Company.company_name.asc()).all()
+    query = "SELECT * FROM company WHERE user_id = :user_id AND report_html IS NOT NULL ORDER BY company_name ASC"
+    companies = db.execute(text(query), {"user_id": user_id})
+
+    #companies = db.query(Company).filter(Company.report_html.isnot(None), Company.report_html != '').order_by(Company.company_name.asc()).all()
 
     logger.log_database_operation("SELECT", "company", "list")
     logger.info(f"Retrieved company list", count=len(companies))
@@ -174,27 +201,39 @@ async def get_company_list(db: Session = Depends(get_db)):
 
 
 @router.get("/company/{company_id}", response_model=CompanyResponse)
-async def get_company(company_id: int, db: Session = Depends(get_db)):
+async def get_company(
+    company_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Retrieve a specific company record by company_id.
     """
-    logger.info(f"Fetching company", company_id=company_id)
+    user_id = current_user.get("user_id")
+    logger.info(f"Fetching company", company_id=company_id, user_id=user_id)
 
-    company = db.query(Company).filter(Company.company_id == company_id).first()
+    company = db.query(Company).filter(
+        Company.company_id == company_id,
+        Company.user_id == user_id
+    ).first()
     if not company:
-        logger.warning(f"Company not found", company_id=company_id)
+        logger.warning(f"Company not found", company_id=company_id, user_id=user_id)
         raise HTTPException(status_code=404, detail=f"Company with id {company_id} not found")
 
     logger.log_database_operation("SELECT", "company", company_id)
     logger.info(f"Company retrieved successfully", company_id=company_id, company_name=company.company_name,
                has_report=bool(company.report_html), report_length=len(company.report_html) if company.report_html else 0,
-               report_preview=company.report_html[:100] if company.report_html else "")
+               report_preview=company.report_html[:100] if company.report_html else "", user_id=user_id)
 
     return company
 
 
 @router.get("/company/job/{job_id}")
-async def get_company_by_job(job_id: int, db: Session = Depends(get_db)):
+async def get_company_by_job(
+    job_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Retrieve company data associated with a specific job_id.
 
@@ -202,21 +241,22 @@ async def get_company_by_job(job_id: int, db: Session = Depends(get_db)):
     """
     from sqlalchemy import text
 
-    logger.info(f"Fetching company by job_id", job_id=job_id)
+    user_id = current_user.get("user_id")
+    logger.info(f"Fetching company by job_id", job_id=job_id, user_id=user_id)
 
-    # Execute query to get job.company and company fields
+    # Execute query to get job.company and company fields - filter by user_id
     query = text("""
         SELECT j.company, c.company_id, c.company_name, c.website_url, c.hq_city,
                c.hq_state, c.industry, c.logo_file, c.linkedin_url, c.job_id, c.report_html
         FROM job j
-        LEFT JOIN company c ON (j.job_id = c.job_id)
-        WHERE j.job_id = :job_id
+        LEFT JOIN company c ON (j.job_id = c.job_id AND c.user_id = :user_id)
+        WHERE j.job_id = :job_id AND j.user_id = :user_id
     """)
 
-    result = db.execute(query, {"job_id": job_id}).fetchone()
+    result = db.execute(query, {"job_id": job_id, "user_id": user_id}).fetchone()
 
     if not result:
-        logger.warning(f"Job not found", job_id=job_id)
+        logger.warning(f"Job not found", job_id=job_id, user_id=user_id)
         raise HTTPException(status_code=404, detail=f"Job with id {job_id} not found")
 
     logger.log_database_operation("SELECT", "company", job_id)
@@ -243,7 +283,11 @@ async def get_company_by_job(job_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/company/search/{company_id}")
-async def search_company(company_id: int, db: Session = Depends(get_db)):
+async def search_company(
+    company_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Search for company information using AI to identify and verify company details.
 
@@ -256,12 +300,16 @@ async def search_company(company_id: int, db: Session = Depends(get_db)):
     - match_score
     - company_logo_url
     """
-    logger.info(f"Starting company search", company_id=company_id)
+    user_id = current_user.get("user_id")
+    logger.info(f"Starting company search", company_id=company_id, user_id=user_id)
 
-    # Verify company exists
-    company = db.query(Company).filter(Company.company_id == company_id).first()
+    # Verify company exists and belongs to user
+    company = db.query(Company).filter(
+        Company.company_id == company_id,
+        Company.user_id == user_id
+    ).first()
     if not company:
-        logger.warning(f"Company not found for search", company_id=company_id)
+        logger.warning(f"Company not found for search", company_id=company_id, user_id=user_id)
         raise HTTPException(status_code=404, detail=f"Company with id {company_id} not found")
 
 
@@ -287,7 +335,11 @@ async def search_company(company_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/company/research/{company_id}", status_code=status.HTTP_202_ACCEPTED)
-async def research_company(company_id: int, db: Session = Depends(get_db)):
+async def research_company(
+    company_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Initiate company research process using AI.
 
@@ -302,12 +354,16 @@ async def research_company(company_id: int, db: Session = Depends(get_db)):
     Returns:
         202 status with process_id for polling
     """
-    logger.info(f"Initiating company research", company_id=company_id)
+    user_id = current_user.get("user_id")
+    logger.info(f"Initiating company research", company_id=company_id, user_id=user_id)
 
-    # Verify company exists
-    company = db.query(Company).filter(Company.company_id == company_id).first()
+    # Verify company exists and belongs to user
+    company = db.query(Company).filter(
+        Company.company_id == company_id,
+        Company.user_id == user_id
+    ).first()
     if not company:
-        logger.warning(f"Company not found for research", company_id=company_id)
+        logger.warning(f"Company not found for research", company_id=company_id, user_id=user_id)
         raise HTTPException(status_code=404, detail=f"Company with id {company_id} not found")
 
     # Create process record
@@ -346,15 +402,23 @@ async def research_company(company_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/company/{company_id}", status_code=status.HTTP_200_OK)
-async def delete_company(company_id: int, db: Session = Depends(get_db)):
+async def delete_company(
+    company_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Delete a company record.
     """
-    logger.info(f"Attempting to delete company", company_id=company_id)
+    user_id = current_user.get("user_id")
+    logger.info(f"Attempting to delete company", company_id=company_id, user_id=user_id)
 
-    company = db.query(Company).filter(Company.company_id == company_id).first()
+    company = db.query(Company).filter(
+        Company.company_id == company_id,
+        Company.user_id == user_id
+    ).first()
     if not company:
-        logger.warning(f"Company not found for deletion", company_id=company_id)
+        logger.warning(f"Company not found for deletion", company_id=company_id, user_id=user_id)
         raise HTTPException(status_code=404, detail=f"Company with id {company_id} not found")
 
     # Delete the company record
@@ -362,13 +426,17 @@ async def delete_company(company_id: int, db: Session = Depends(get_db)):
     db.commit()
 
     logger.log_database_operation("DELETE", "company", company_id)
-    logger.info(f"Company deleted successfully", company_id=company_id)
+    logger.info(f"Company deleted successfully", company_id=company_id, user_id=user_id)
 
     return {"status": "success", "message": "Company deleted successfully"}
 
 
 @router.get("/company/download/{company_id}")
-async def download_company_report(company_id: int, db: Session = Depends(get_db)):
+async def download_company_report(
+    company_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Download company report as DOCX file.
 
@@ -379,11 +447,15 @@ async def download_company_report(company_id: int, db: Session = Depends(get_db)
     from ..utils.conversion import Conversion
     import os
 
-    logger.info(f"Downloading company report", company_id=company_id)
+    user_id = current_user.get("user_id")
+    logger.info(f"Downloading company report", company_id=company_id, user_id=user_id)
 
-    company = db.query(Company).filter(Company.company_id == company_id).first()
+    company = db.query(Company).filter(
+        Company.company_id == company_id,
+        Company.user_id == user_id
+    ).first()
     if not company:
-        logger.warning(f"Company not found for download", company_id=company_id)
+        logger.warning(f"Company not found for download", company_id=company_id, user_id=user_id)
         raise HTTPException(status_code=404, detail=f"Company with id {company_id} not found")
 
     if not company.report_html or company.report_html.strip() == "":

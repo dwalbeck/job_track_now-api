@@ -130,9 +130,9 @@ class TestConvertHtml2Docx:
     @patch('app.utils.conversion.Conversion.html2docx_from_job')
     def test_convert_html2docx_success(self, mock_html2docx, mock_formatting, client, test_db):
         """Test successful HTML to DOCX conversion."""
-        # Create test personal data
+        # Update test user data
         test_db.execute(text("""
-            UPDATE personal SET first_name = 'John', last_name = 'Doe'
+            UPDATE users SET first_name = 'John', last_name = 'Doe' WHERE login = 'testuser'
         """))
         # Create test job
         test_db.execute(text("""
@@ -152,16 +152,19 @@ class TestConvertHtml2Docx:
         mock_html2docx.assert_called_once_with(1, test_db)
         mock_formatting.assert_called_once_with('resume.docx', 'John Doe')
 
-    def test_convert_html2docx_no_personal_data(self, client, test_db):
-        """Test conversion fails when personal data not found."""
-        # Delete personal data
-        test_db.execute(text("DELETE FROM personal"))
+    def test_convert_html2docx_no_user_data(self, client, test_db):
+        """Test conversion fails when user data not found."""
+        # Delete users and related data
+        test_db.execute(text("DELETE FROM user_setting"))
+        test_db.execute(text("DELETE FROM user_detail"))
+        test_db.execute(text("DELETE FROM user_address"))
+        test_db.execute(text("DELETE FROM users"))
         test_db.commit()
 
         response = client.get("/v1/convert/html2docx?job_id=1")
 
         assert response.status_code == 404
-        assert "Failed to retrieve first_name and last_name" in response.json()['detail']
+        assert "Failed to retrieve user name" in response.json()['detail']
 
 
 class TestConvertFileEndpoint:

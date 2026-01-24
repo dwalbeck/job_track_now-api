@@ -33,6 +33,7 @@ from ..utils.ai_agent import AiAgent
 from ..utils.conversion import Conversion
 from ..utils.job_helpers import update_job_activity
 from ..utils.logger import logger
+from ..middleware.auth_middleware import get_current_user
 
 
 router = APIRouter()
@@ -165,22 +166,26 @@ def validate_file_format(extension: str) -> str:
 		)
 	return extension
 
-def make_unique_resume_title(base_title: str, db: Session) -> str:
+def make_unique_resume_title(base_title: str, db: Session, user_id: int) -> str:
 	"""
 	Ensure resume title is unique by appending an incrementing number if needed.
 
 	Args:
 		base_title: The desired resume title
 		db: Database session
+		user_id: The user's ID
 
 	Returns:
-		Unique resume title that doesn't exist in the database
+		Unique resume title that doesn't exist in the database for this user
 	"""
 	if not base_title:
 		return base_title
 
-	# Check if base title already exists
-	existing = db.query(Resume).filter(Resume.resume_title == base_title).first()
+	# Check if base title already exists for this user
+	existing = db.query(Resume).filter(
+		Resume.resume_title == base_title,
+		Resume.user_id == user_id
+	).first()
 
 	if not existing:
 		return base_title
@@ -189,7 +194,10 @@ def make_unique_resume_title(base_title: str, db: Session) -> str:
 	counter = 1
 	while True:
 		new_title = f"{base_title} ({counter})"
-		existing = db.query(Resume).filter(Resume.resume_title == new_title).first()
+		existing = db.query(Resume).filter(
+			Resume.resume_title == new_title,
+			Resume.user_id == user_id
+		).first()
 
 		if not existing:
 			return new_title
@@ -201,19 +209,23 @@ def make_unique_resume_title(base_title: str, db: Session) -> str:
 			raise ValueError(f"Could not generate unique resume title after {counter} attempts")
 
 
-def make_unique_filename(base_filename: str, db: Session) -> str:
+def make_unique_filename(base_filename: str, db: Session, user_id: int) -> str:
 	"""
 	Ensure filename is unique by adding timestamp or incrementing number if needed.
 
 	Args:
 		base_filename: The desired filename (e.g., "resume.pdf")
 		db: Database session
+		user_id: The user's ID
 
 	Returns:
-		Unique filename that doesn't exist in the database
+		Unique filename that doesn't exist in the database for this user
 	"""
-	# Check if base filename already exists
-	existing = db.query(Resume).filter(Resume.file_name == base_filename).first()
+	# Check if base filename already exists for this user
+	existing = db.query(Resume).filter(
+		Resume.file_name == base_filename,
+		Resume.user_id == user_id
+	).first()
 
 	if not existing:
 		return base_filename
@@ -231,7 +243,10 @@ def make_unique_filename(base_filename: str, db: Session) -> str:
 	date_stamp = datetime.utcnow().strftime('%Y_%m_%d')
 	timestamped_name = f"{base_name}_{date_stamp}.{extension}" if extension else f"{base_name}_{date_stamp}"
 
-	existing = db.query(Resume).filter(Resume.file_name == timestamped_name).first()
+	existing = db.query(Resume).filter(
+		Resume.file_name == timestamped_name,
+		Resume.user_id == user_id
+	).first()
 	if not existing:
 		return timestamped_name
 
@@ -239,29 +254,36 @@ def make_unique_filename(base_filename: str, db: Session) -> str:
 	counter = 1
 	while True:
 		numbered_name = f"{base_name}_{date_stamp}_{counter}.{extension}" if extension else f"{base_name}_{date_stamp}_{counter}"
-		existing = db.query(Resume).filter(Resume.file_name == numbered_name).first()
+		existing = db.query(Resume).filter(
+			Resume.file_name == numbered_name,
+			Resume.user_id == user_id
+		).first()
 		if not existing:
 			return numbered_name
 		counter += 1
 
 
 @router.get("/resume/baseline")
-async def get_baseline_resumes(db: Session = Depends(get_db)):
+async def get_baseline_resumes(
+	db: Session = Depends(get_db),
+	current_user: dict = Depends(get_current_user)
+):
 	"""
 	Get all baseline resumes.
 
 	Returns a list of baseline resumes ordered by is_default, resume_updated, and resume_created.
 	"""
-	query = """
+	user_id = current_user.get("user_id")
+	query = text("""
 		SELECT r.resume_id, r.resume_title, r.resume_updated, r.is_default,
 			   rd.keyword_count, rd.focus_count
 		FROM resume r
 		LEFT JOIN resume_detail rd ON (r.resume_id = rd.resume_id)
-		WHERE r.is_baseline = true AND r.is_active = true
+		WHERE r.is_baseline = true AND r.is_active = true AND r.user_id = :user_id
 		ORDER BY r.is_default DESC, r.resume_updated DESC, r.resume_created DESC
-	"""
+	""")
 
-	result = db.execute(text(query))
+	result = db.execute(query, {"user_id": user_id})
 
 	return [
 		ResumeBaseline(
@@ -277,21 +299,25 @@ async def get_baseline_resumes(db: Session = Depends(get_db)):
 
 
 @router.get("/resume/baseline/list")
-async def get_baseline_resume_list(db: Session = Depends(get_db)):
+async def get_baseline_resume_list(
+	db: Session = Depends(get_db),
+	current_user: dict = Depends(get_current_user)
+):
 	"""
 	Get a simple list of baseline resumes for dropdown/selection purposes.
 
 	Returns only resume_id, resume_title, and is_default fields,
 	ordered by is_default (descending) then resume_title (ascending).
 	"""
-	query = """
+	user_id = current_user.get("user_id")
+	query = text("""
 		SELECT resume_id, resume_title, is_default
 		FROM resume
-		WHERE is_baseline = true AND is_active = true
+		WHERE is_baseline = true AND is_active = true AND user_id = :user_id
 		ORDER BY resume_created DESC
-	"""
+	""")
 
-	result = db.execute(text(query))
+	result = db.execute(query, {"user_id": user_id})
 
 	return [
 		ResumeBaselineList(
@@ -304,25 +330,29 @@ async def get_baseline_resume_list(db: Session = Depends(get_db)):
 
 
 @router.get("/resume/job", response_model=List[ResumeJob])
-async def get_job_resumes(db: Session = Depends(get_db)):
+async def get_job_resumes(
+	db: Session = Depends(get_db),
+	current_user: dict = Depends(get_current_user)
+):
 	"""
 	Get all job-specific resumes.
 
 	Returns a list of resumes associated with jobs, including company, job title,
 	keyword/focus counts, and scores from resume_detail if available.
 	"""
-	query = """
+	user_id = current_user.get("user_id")
+	query = text("""
 		SELECT j.company, j.job_title, j.job_id, rd.keyword_count, rd.focus_count,
 			   rd.baseline_score, rd.rewrite_score,
 			   r.resume_id, r.resume_updated, r.baseline_resume_id
 		FROM resume r
 		JOIN job j ON (r.job_id = j.job_id)
 		LEFT JOIN resume_detail rd ON (r.resume_id = rd.resume_id)
-		WHERE r.is_baseline = false AND r.is_active = true
+		WHERE r.is_baseline = false AND r.is_active = true AND r.user_id = :user_id
 		ORDER BY r.resume_updated DESC, r.resume_created DESC
-	"""
+	""")
 
-	result = db.execute(text(query))
+	result = db.execute(query, {"user_id": user_id})
 
 	resumes = [
 		ResumeJob(
@@ -349,13 +379,21 @@ async def get_job_resumes(db: Session = Depends(get_db)):
 
 
 @router.get("/resume/{resume_id}")
-async def get_resume(resume_id: int, db: Session = Depends(get_db)):
+async def get_resume(
+	resume_id: int,
+	db: Session = Depends(get_db),
+	current_user: dict = Depends(get_current_user)
+):
 	"""
 	Get a single resume by ID.
 
 	Returns all fields from the resume table for the specified resume_id.
 	"""
-	resume = db.query(Resume).filter(Resume.resume_id == resume_id).first()
+	user_id = current_user.get("user_id")
+	resume = db.query(Resume).filter(
+		Resume.resume_id == resume_id,
+		Resume.user_id == user_id
+	).first()
 
 	if not resume:
 		raise HTTPException(status_code=404, detail="Resume not found")
@@ -376,12 +414,26 @@ async def get_resume(resume_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/resume/detail/{resume_id}")
-async def get_resume_detail(resume_id: int, db: Session = Depends(get_db)):
+async def get_resume_detail(
+	resume_id: int,
+	db: Session = Depends(get_db),
+	current_user: dict = Depends(get_current_user)
+):
 	"""
 	Get resume detail by resume ID.
 
 	Returns all fields from the resume_detail table for the specified resume_id.
 	"""
+	user_id = current_user.get("user_id")
+	# First verify the resume belongs to the user
+	resume = db.query(Resume).filter(
+		Resume.resume_id == resume_id,
+		Resume.user_id == user_id
+	).first()
+
+	if not resume:
+		raise HTTPException(status_code=404, detail="Resume not found")
+
 	detail = db.query(ResumeDetail).filter(ResumeDetail.resume_id == resume_id).first()
 
 	if not detail:
@@ -416,7 +468,8 @@ async def create_or_update_resume(
 	baseline_resume_id: Optional[int] = Form(None),
 	job_id: Optional[int] = Form(None),
 	resume_id: Optional[int] = Form(None),
-	db: Session = Depends(get_db)
+	db: Session = Depends(get_db),
+	current_user: dict = Depends(get_current_user)
 ):
 	"""
 	Create a new resume or update an existing one.
@@ -432,8 +485,9 @@ async def create_or_update_resume(
 	- resume_id: ID of resume to update (omit for insert)
 	"""
 
+	user_id = current_user.get("user_id")
 	is_update = bool(resume_id)
-	logger.info("starting POST resume", resume_title=resume_title)
+	logger.info("starting POST resume", resume_title=resume_title, user_id=user_id)
 
 	# Determine original_format from upload_file if present
 	original_format = None
@@ -455,9 +509,9 @@ async def create_or_update_resume(
 	else:
 		is_baseline = True
 
-	# Verify job exists if job_id is provided
+	# Verify job exists and belongs to user if job_id is provided
 	if job_id:
-		job = db.query(Job).filter(Job.job_id == job_id).first()
+		job = db.query(Job).filter(Job.job_id == job_id, Job.user_id == user_id).first()
 		if not job:
 			raise HTTPException(status_code=404, detail="Job not found")
 
@@ -469,7 +523,7 @@ async def create_or_update_resume(
 			calculated_file_name = f"{clean_filename_part(resume_title)}.{original_format}"
 		else:
 			# Use company-job_title for job-specific resumes
-			job = db.query(Job).filter(Job.job_id == job_id).first()
+			job = db.query(Job).filter(Job.job_id == job_id, Job.user_id == user_id).first()
 			if job:
 				company_part = clean_filename_part(job.company) if job.company else "unknown"
 				job_title_part = clean_filename_part(job.job_title) if job.job_title else "unknown"
@@ -477,17 +531,23 @@ async def create_or_update_resume(
 
 	# Ensure filename is unique (only for new resumes)
 	if not is_update and calculated_file_name:
-		calculated_file_name = make_unique_filename(calculated_file_name, db)
+		calculated_file_name = make_unique_filename(calculated_file_name, db, user_id)
 
 	if is_update:
-		# Update existing resume
-		resume = db.query(Resume).filter(Resume.resume_id == resume_id).first()
+		# Update existing resume - ensure it belongs to user
+		resume = db.query(Resume).filter(
+			Resume.resume_id == resume_id,
+			Resume.user_id == user_id
+		).first()
 		if not resume:
 			raise HTTPException(status_code=404, detail="Resume not found")
 
-		# If setting this resume as default, first unset all other defaults
+		# If setting this resume as default, first unset all other defaults for this user
 		if is_default:
-			db.query(Resume).filter(Resume.resume_id != resume_id).update(
+			db.query(Resume).filter(
+				Resume.resume_id != resume_id,
+				Resume.user_id == user_id
+			).update(
 				{"is_default": False},
 				synchronize_session=False
 			)
@@ -555,10 +615,11 @@ async def create_or_update_resume(
 
 	else:
 		# Create new resume
-		# Ensure resume_title is unique
-		unique_resume_title = make_unique_resume_title(resume_title, db) if resume_title else resume_title
+		# Ensure resume_title is unique for this user
+		unique_resume_title = make_unique_resume_title(resume_title, db, user_id) if resume_title else resume_title
 
 		new_resume = Resume(
+			user_id=user_id,
 			resume_title=unique_resume_title,
 			file_name=calculated_file_name,
 			original_format=original_format,
@@ -621,7 +682,8 @@ async def create_or_update_resume(
 @router.put("/resume")
 async def update_resume_json(
 	resume_data: ResumeUpdate,
-	db: Session = Depends(get_db)
+	db: Session = Depends(get_db),
+	current_user: dict = Depends(get_current_user)
 ):
 	"""
 	Update an existing resume using JSON payload.
@@ -629,14 +691,15 @@ async def update_resume_json(
 	This endpoint accepts JSON and is used for simple resume metadata updates
 	without file uploads.
 	"""
+	user_id = current_user.get("user_id")
 	if not resume_data.resume_id:
 		raise HTTPException(status_code=400, detail="resume_id is required for updates")
 
-	logger.info("Updating resume via PUT", resume_id=resume_data.resume_id)
+	logger.info("Updating resume via PUT", resume_id=resume_data.resume_id, user_id=user_id)
 
-	# Check if resume exists
-	resume_query = text("SELECT resume_id FROM resume WHERE resume_id = :resume_id")
-	existing = db.execute(resume_query, {"resume_id": resume_data.resume_id}).first()
+	# Check if resume exists and belongs to user
+	resume_query = text("SELECT resume_id FROM resume WHERE resume_id = :resume_id AND user_id = :user_id")
+	existing = db.execute(resume_query, {"resume_id": resume_data.resume_id, "user_id": user_id}).first()
 
 	if not existing:
 		raise HTTPException(status_code=404, detail=f"Resume {resume_data.resume_id} not found")
@@ -675,10 +738,11 @@ async def update_resume_json(
 
 	if update_fields:
 		update_fields.append("resume_updated = NOW()")
+		params["user_id"] = user_id
 		update_query = text(f"""
 			UPDATE resume
 			SET {', '.join(update_fields)}
-			WHERE resume_id = :resume_id
+			WHERE resume_id = :resume_id AND user_id = :user_id
 		""")
 		db.execute(update_query, params)
 		db.commit()
@@ -697,7 +761,8 @@ async def update_resume_json(
 @router.post("/resume/detail")
 async def create_or_update_resume_detail(
 	detail_data: ResumeDetailCreate,
-	db: Session = Depends(get_db)
+	db: Session = Depends(get_db),
+	current_user: dict = Depends(get_current_user)
 ):
 	"""
 	Create or update resume detail information.
@@ -714,9 +779,13 @@ async def create_or_update_resume_detail(
 	- resume_keyword: List of keywords applied
 	- focus_count: Number of focus areas applied
 	"""
+	user_id = current_user.get("user_id")
 
-	# Verify that the resume exists
-	resume = db.query(Resume).filter(Resume.resume_id == detail_data.resume_id).first()
+	# Verify that the resume exists and belongs to user
+	resume = db.query(Resume).filter(
+		Resume.resume_id == detail_data.resume_id,
+		Resume.user_id == user_id
+	).first()
 	if not resume:
 		raise HTTPException(status_code=404, detail="Resume not found")
 
@@ -760,7 +829,8 @@ async def create_or_update_resume_detail(
 @router.delete("/resume")
 async def delete_resume(
 	resume_id: int,
-	db: Session = Depends(get_db)
+	db: Session = Depends(get_db),
+	current_user: dict = Depends(get_current_user)
 ):
 	"""
 	Soft delete a resume record by setting is_active to false.
@@ -771,9 +841,13 @@ async def delete_resume(
 	Query parameters:
 	- resume_id: ID of the resume to delete
 	"""
+	user_id = current_user.get("user_id")
 
-	# Fetch the resume
-	resume = db.query(Resume).filter(Resume.resume_id == resume_id).first()
+	# Fetch the resume - ensure it belongs to user
+	resume = db.query(Resume).filter(
+		Resume.resume_id == resume_id,
+		Resume.user_id == user_id
+	).first()
 
 	if not resume:
 		raise HTTPException(status_code=404, detail="Resume not found")
@@ -790,7 +864,8 @@ async def delete_resume(
 @router.post("/resume/clone")
 async def clone_resume(
 	clone_request: ResumeCloneRequest,
-	db: Session = Depends(get_db)
+	db: Session = Depends(get_db),
+	current_user: dict = Depends(get_current_user)
 ):
 	"""
 	Clone an existing resume record and its associated file.
@@ -801,9 +876,13 @@ async def clone_resume(
 	JSON body:
 	- resume_id: ID of the resume to clone
 	"""
+	user_id = current_user.get("user_id")
 
-	# Fetch the original resume
-	original_resume = db.query(Resume).filter(Resume.resume_id == clone_request.resume_id).first()
+	# Fetch the original resume - ensure it belongs to user
+	original_resume = db.query(Resume).filter(
+		Resume.resume_id == clone_request.resume_id,
+		Resume.user_id == user_id
+	).first()
 
 	if not original_resume:
 		raise HTTPException(status_code=404, detail="Resume not found")
@@ -821,24 +900,27 @@ async def clone_resume(
 		base_name = original_file_name
 		extension = ""
 
-	# Check if a simple -copy already exists
+	# Check if a simple -copy already exists for this user
 	test_file_name = f"{base_name}-copy.{extension}" if extension else f"{base_name}-copy"
 
-	existing = db.query(Resume).filter(Resume.file_name == test_file_name).first()
+	existing = db.query(Resume).filter(
+		Resume.file_name == test_file_name,
+		Resume.user_id == user_id
+	).first()
 
 	if existing:
-		# Need to find the highest numbered copy
+		# Need to find the highest numbered copy for this user
 		# Use regex to find all copies with numbers
 		pattern = f"{re.escape(base_name)}-copy\\d*"
 
 		query = text("""
 			SELECT file_name FROM resume
-			WHERE file_name ~ :pattern
+			WHERE file_name ~ :pattern AND user_id = :user_id
 			ORDER BY file_name DESC
 			LIMIT 1
 		""")
 
-		result = db.execute(query, {"pattern": pattern}).first()
+		result = db.execute(query, {"pattern": pattern, "user_id": user_id}).first()
 
 		if result:
 			# Extract the number from the highest match
@@ -879,11 +961,12 @@ async def clone_resume(
 	else:
 		new_resume_title = None
 
-	# Ensure resume_title is unique
-	unique_resume_title = make_unique_resume_title(new_resume_title, db) if new_resume_title else new_resume_title
+	# Ensure resume_title is unique for this user
+	unique_resume_title = make_unique_resume_title(new_resume_title, db, user_id) if new_resume_title else new_resume_title
 
 	# Create new resume record
 	new_resume = Resume(
+		user_id=user_id,
 		baseline_resume_id=original_resume.baseline_resume_id,
 		job_id=original_resume.job_id,
 		original_format=original_resume.original_format,
@@ -956,7 +1039,8 @@ async def clone_resume(
 @router.post("/resume/extract", response_model=ResumeExtractResponse)
 async def extract_resume_data(
 	extract_request: ResumeExtractRequest,
-	db: Session = Depends(get_db)
+	db: Session = Depends(get_db),
+	current_user: dict = Depends(get_current_user)
 ):
 	"""
 	Extract job title and suggestions from a resume using AI.
@@ -972,6 +1056,15 @@ async def extract_resume_data(
 	- job_title: Object containing job_title string and line_number
 	- suggestions: List of improvement suggestions
 	"""
+	user_id = current_user.get("user_id")
+
+	# Verify the resume belongs to user
+	resume = db.query(Resume).filter(
+		Resume.resume_id == extract_request.resume_id,
+		Resume.user_id == user_id
+	).first()
+	if not resume:
+		raise HTTPException(status_code=404, detail="Resume not found")
 
 	try:
 		# Initialize AI agent with database session
@@ -979,7 +1072,8 @@ async def extract_resume_data(
 
 		# Extract data using AI
 		result = ai_agent.extract_data(
-			resume_id=extract_request.resume_id
+			resume_id=extract_request.resume_id,
+			user_id=user_id
 		)
 
 		# Convert the result to response model
@@ -1001,7 +1095,8 @@ async def extract_resume_data(
 @router.post("/resume/full", response_model=ResumeFullResponse)
 async def resume_full(
 	request: ResumeFullRequest,
-	db: Session = Depends(get_db)
+	db: Session = Depends(get_db),
+	current_user: dict = Depends(get_current_user)
 ):
 	"""
 	Used to create the initial 'resume' and 'resume_detail' records populated with baseline resume
@@ -1013,16 +1108,17 @@ async def resume_full(
 	:param db:
 	:return: resume_id
 	"""
-	logger.info(f"Creating resume for job posting", job_id=request.job_id, baseline_resume_id=request.baseline_resume_id)
+	user_id = current_user.get("user_id")
+	logger.info(f"Creating resume for job posting", job_id=request.job_id, baseline_resume_id=request.baseline_resume_id, user_id=user_id)
 
 	try:
-		# Step 0: Check for pre-existing resume associated with job posting
+		# Step 0: Check for pre-existing resume associated with job posting (ensure user ownership)
 		query = text("""
-			SELECT j.resume_id, rd.keyword_final, rd.focus_final 
-			FROM job j JOIN resume_detail rd ON (j.resume_id=rd.resume_id) 
-			WHERE j.job_id = :job_id
+			SELECT j.resume_id, rd.keyword_final, rd.focus_final
+			FROM job j JOIN resume_detail rd ON (j.resume_id=rd.resume_id)
+			WHERE j.job_id = :job_id AND j.user_id = :user_id
 		""")
-		check_result = db.execute(query, {"job_id": request.job_id}).first()
+		check_result = db.execute(query, {"job_id": request.job_id, "user_id": user_id}).first()
 
 		if check_result:
 			logger.debug(f"Resume has already been created for this job posting", resume_id=check_result.resume_id)
@@ -1068,17 +1164,17 @@ async def resume_full(
 				resume_id=check_result.resume_id
 			)
 
-		# Step 1: Retrieve baseline resume data and verify it's a baseline resume
+		# Step 1: Retrieve baseline resume data and verify it's a baseline resume (user ownership)
 		query = text("""
 			SELECT r.original_format, r.is_baseline, rd.resume_markdown, rd.resume_html, rd.position_title
 			FROM resume r
 			JOIN resume_detail rd ON (r.resume_id = rd.resume_id)
-			WHERE r.resume_id = :resume_id
+			WHERE r.resume_id = :resume_id AND r.user_id = :user_id
 		""")
-		resume_result = db.execute(query, {"resume_id": request.baseline_resume_id}).first()
+		resume_result = db.execute(query, {"resume_id": request.baseline_resume_id, "user_id": user_id}).first()
 
 		if not resume_result:
-			logger.warning(f"Resume not found", resume_id=request.baseline_resume_id)
+			logger.warning(f"Resume not found", resume_id=request.baseline_resume_id, user_id=user_id)
 			raise HTTPException(status_code=404, detail="Resume not found")
 
 		# Verify is_baseline is true
@@ -1088,17 +1184,17 @@ async def resume_full(
 
 		logger.debug(f"Retrieved baseline resume", baseline_resume_id=request.baseline_resume_id)
 
-		# Step 2: Retrieve job data
+		# Step 2: Retrieve job data (user ownership)
 		job_query = text("""
 			SELECT j.company, j.job_title, jd.job_desc, jd.job_qualification, jd.job_keyword
 			FROM job j
 			JOIN job_detail jd ON (j.job_id = jd.job_id)
-			WHERE j.job_id = :job_id
+			WHERE j.job_id = :job_id AND j.user_id = :user_id
 		""")
-		job_result = db.execute(job_query, {"job_id": request.job_id}).first()
+		job_result = db.execute(job_query, {"job_id": request.job_id, "user_id": user_id}).first()
 
 		if not job_result:
-			logger.warning(f"Job not found", job_id=request.job_id)
+			logger.warning(f"Job not found", job_id=request.job_id, user_id=user_id)
 			raise HTTPException(status_code=404, detail="Job not found")
 
 		if not job_result.job_desc:
@@ -1109,11 +1205,12 @@ async def resume_full(
 
 		# Step 3: Create the resume record
 		base_resume_title = f"{job_result.company} - {job_result.job_title}"
-		unique_resume_title = make_unique_resume_title(base_resume_title, db)
+		unique_resume_title = make_unique_resume_title(base_resume_title, db, user_id)
 		file_name = Conversion._set_file(job_result.company, job_result.job_title, 'html')
 		baseline_score = calculate_keyword_score(job_result.job_keyword, resume_result.resume_markdown)
 
 		new_resume = Resume(
+			user_id=user_id,
 			baseline_resume_id=request.baseline_resume_id,
 			job_id=request.job_id,
 			original_format=resume_result.original_format,
@@ -1167,13 +1264,14 @@ async def resume_full(
 		else:
 			logger.warning(f"No file_name or HTML content available, HTML not written to disk", resume_id=new_resume.resume_id)
 
-		# Step 5: Update job record to associate the new resume
+		# Step 5: Update job record to associate the new resume (ensure user ownership)
 		job_update_query = text("""
-            UPDATE job SET resume_id = :resume_id WHERE job_id = :job_id
+            UPDATE job SET resume_id = :resume_id WHERE job_id = :job_id AND user_id = :user_id
         """)
 		db.execute(job_update_query, {
 			"resume_id": new_resume.resume_id,
-			"job_id": request.job_id
+			"job_id": request.job_id,
+			"user_id": user_id
 		})
 		db.commit()
 
@@ -1197,7 +1295,11 @@ async def resume_full(
 		)
 
 @router.get("/resume/rewrite/{job_id}", response_model=ResumeRewriteResponse)
-async def get_rewrite_data(job_id: int, db: Session = Depends(get_db)):
+async def get_rewrite_data(
+	job_id: int,
+	db: Session = Depends(get_db),
+	current_user: dict = Depends(get_current_user)
+):
 	"""
 	Retrieve the resume rewrite data for a given job.
 
@@ -1211,20 +1313,21 @@ async def get_rewrite_data(job_id: int, db: Session = Depends(get_db)):
 	Returns:
 		ResumeRewriteResponse with resume data including HTML, suggestions, and scores
 	"""
+	user_id = current_user.get("user_id")
 	try:
-		logger.debug(f"Start resume/rewrite data retrieval", job_id=job_id)
+		logger.debug(f"Start resume/rewrite data retrieval", job_id=job_id, user_id=user_id)
 
 		query = text("""
 			SELECT rd.resume_id, rd.resume_html, rd.resume_html_rewrite, rd.suggestion,
 			       rd.baseline_score, rd.rewrite_score
 			FROM job j
 			LEFT JOIN resume_detail rd ON (j.resume_id = rd.resume_id)
-			WHERE j.job_id = :job_id
+			WHERE j.job_id = :job_id AND j.user_id = :user_id
 		""")
-		result = db.execute(query, {"job_id": job_id}).first()
+		result = db.execute(query, {"job_id": job_id, "user_id": user_id}).first()
 
 		if not result:
-			logger.warning(f"Job resume not found", job_id=job_id)
+			logger.warning(f"Job resume not found", job_id=job_id, user_id=user_id)
 			raise HTTPException(status_code=404, detail="Job resume not found")
 
 		logger.info(f"Resume rewrite data retrieved successfully", job_id=job_id, resume_id=result.resume_id)
@@ -1247,7 +1350,8 @@ async def get_rewrite_data(job_id: int, db: Session = Depends(get_db)):
 async def rewrite_resume(
 	request: ResumeRewriteRequest,
 	background_tasks: BackgroundTasks,
-	db: Session = Depends(get_db)
+	db: Session = Depends(get_db),
+	current_user: dict = Depends(get_current_user)
 ):
 	"""
 	Rewrite resume using baseline resume for a specific job using AI.
@@ -1268,23 +1372,24 @@ async def rewrite_resume(
 	Returns:
 		202 Accepted with process_id
 	"""
+	user_id = current_user.get("user_id")
 	try:
-		logger.info(f"Initiating resume rewrite", job_id=request.job_id)
+		logger.info(f"Initiating resume rewrite", job_id=request.job_id, user_id=user_id)
 
-		# Verify the job exists and has a resume
+		# Verify the job exists, belongs to user, and has a resume
 		verify_query = text("""
 			SELECT j.resume_id
 			FROM job j
-			WHERE j.job_id = :job_id
+			WHERE j.job_id = :job_id AND j.user_id = :user_id
 		""")
-		job_result = db.execute(verify_query, {"job_id": request.job_id}).first()
+		job_result = db.execute(verify_query, {"job_id": request.job_id, "user_id": user_id}).first()
 
 		if not job_result:
-			logger.warning(f"Job not found", job_id=request.job_id)
+			logger.warning(f"Job not found", job_id=request.job_id, user_id=user_id)
 			raise HTTPException(status_code=404, detail="Job not found")
 
 		if not job_result.resume_id:
-			logger.warning(f"Job has no resume associated", job_id=request.job_id)
+			logger.warning(f"Job has no resume associated", job_id=request.job_id, user_id=user_id)
 			raise HTTPException(status_code=400, detail="Job has no resume associated")
 
 		# Create process record using ORM to get the auto-generated process_id
@@ -1308,13 +1413,16 @@ async def rewrite_resume(
 		import threading
 		from ..core.database import SessionLocal
 
+		# Capture user_id for the thread
+		thread_user_id = user_id
+
 		def run_rewrite():
 			# Create a new database session for the thread
 			# DO NOT use the request-scoped 'db' session
 			thread_db = SessionLocal()
 			try:
 				thread_ai_agent = AiAgent(thread_db)
-				thread_ai_agent.resume_rewrite_process(request.job_id, process_id)
+				thread_ai_agent.resume_rewrite_process(request.job_id, process_id, thread_user_id)
 			finally:
 				thread_db.close()
 

@@ -64,19 +64,32 @@ class Settings(BaseSettings):
 				return [self.allowed_origins]
 		return self.allowed_origins
 
-	def load_llm_settings_from_db(self, db):
+	def load_llm_settings_from_db(self, db, user_id: int = None):
 		"""
-		Load LLM settings and API keys from the personal table in the database.
+		Load LLM settings and API keys from the user_setting table in the database.
 		Updates the settings object with the database values if they exist.
+
+		Args:
+			db: Database session
+			user_id: The user's ID. If None, uses the first user found.
 		"""
 		from sqlalchemy import text
 		try:
+			if not user_id:
+				# Get first user if no user_id provided
+				user_query = text("SELECT user_id FROM users ORDER BY user_id LIMIT 1")
+				user_result = db.execute(user_query).first()
+				if user_result:
+					user_id = user_result.user_id
+				else:
+					return  # No users, use defaults
+
 			query = text("""
 				SELECT default_llm, job_extract_llm, rewrite_llm, cover_llm, resume_extract_llm, company_llm, tools_llm, openai_api_key
-				FROM personal
-				LIMIT 1
+				FROM user_setting
+				WHERE user_id = :user_id
 			""")
-			result = db.execute(query).first()
+			result = db.execute(query, {"user_id": user_id}).first()
 
 			if result:
 				if result.default_llm:

@@ -32,22 +32,37 @@ def generate_code_challenge(verifier):
 
 @pytest.fixture(autouse=True)
 def setup_test_user(test_db):
-    """Setup test user with credentials in personal table"""
+    """Setup test user with credentials in users table"""
+    from app.utils.password import hash_password
+
+    # Hash the test password
+    hashed_password = hash_password("testpass123")
+
     test_db.execute(text("""
-        INSERT INTO personal (
-            first_name, last_name, login, passwd,
-            resume_extract_llm, job_extract_llm, rewrite_llm, cover_llm, company_llm,
-            docx2html, odt2html, pdf2html, html2docx, html2odt, html2pdf
-        )
-        VALUES (
-            'John', 'Doe', 'testuser', 'testpass123',
-            'gpt-4.1-mini', 'gpt-4.1-mini', 'gpt-4.1-mini', 'gpt-4.1-mini', 'gpt-4.1-mini',
-            'docx-parser-converter', 'pandoc', 'markitdown',
-            'html4docx', 'pandoc', 'weasyprint'
-        )
-        ON CONFLICT (first_name, last_name) DO UPDATE
-        SET login = EXCLUDED.login, passwd = EXCLUDED.passwd
-    """))
+        INSERT INTO users (first_name, last_name, login, passwd, email, is_admin)
+        VALUES ('John', 'Doe', 'oauthoauthtestuser', :passwd, 'john@example.com', false)
+        ON CONFLICT DO NOTHING
+    """), {"passwd": hashed_password})
+
+    # Get the user_id
+    result = test_db.execute(text("SELECT user_id FROM users WHERE login = 'oauthoauthtestuser'")).first()
+    if result:
+        user_id = result.user_id
+        # Create user settings
+        test_db.execute(text("""
+            INSERT INTO user_setting (
+                user_id,
+                default_llm, resume_extract_llm, job_extract_llm, rewrite_llm, cover_llm, company_llm, tools_llm,
+                docx2html, odt2html, pdf2html, html2docx, html2odt, html2pdf
+            )
+            VALUES (
+                :user_id,
+                'gpt-4.1-mini', 'gpt-4.1-mini', 'gpt-4.1-mini', 'gpt-4.1-mini', 'gpt-4.1-mini', 'gpt-4.1-mini', 'gpt-4.1-mini',
+                'docx-parser-converter', 'pandoc', 'markitdown',
+                'html4docx', 'pandoc', 'weasyprint'
+            )
+            ON CONFLICT (user_id) DO NOTHING
+        """), {"user_id": user_id})
     test_db.commit()
     yield
     # Cleanup in-memory auth codes after each test
@@ -70,7 +85,7 @@ class TestOAuthUtils:
     def test_store_and_retrieve_authorization_code(self):
         """Test storing and retrieving authorization code"""
         code = "test_auth_code_123"
-        username = "testuser"
+        username = "oauthtestuser"
         redirect_uri = "http://localhost:3000/callback"
         code_challenge = "test_challenge"
         code_challenge_method = "S256"
@@ -107,7 +122,7 @@ class TestOAuthUtils:
         code = "test_auth_code_456"
         store_authorization_code(
             code=code,
-            username="testuser",
+            username="oauthtestuser",
             redirect_uri="http://localhost:3000/callback",
             code_challenge="challenge",
             code_challenge_method="S256",
@@ -147,7 +162,7 @@ class TestOAuthUtils:
 
     def test_create_and_verify_access_token(self):
         """Test JWT access token creation and verification"""
-        username = "testuser"
+        username = "oauthtestuser"
         scope = "all"
 
         # Create token
@@ -243,7 +258,7 @@ class TestLoginEndpoint:
             "state": state,
             "code_challenge": challenge,
             "code_challenge_method": "S256",
-            "username": "testuser",
+            "username": "oauthtestuser",
             "password": "testpass123",
             "scope": "all"
         }, follow_redirects=False)
@@ -266,7 +281,7 @@ class TestLoginEndpoint:
         auth_code = query_params["code"][0]
         code_data = retrieve_authorization_code(auth_code)
         assert code_data is not None
-        assert code_data["username"] == "testuser"
+        assert code_data["username"] == "oauthtestuser"
 
     def test_login_invalid_username(self, client):
         """Test login with invalid username"""
@@ -292,7 +307,7 @@ class TestLoginEndpoint:
             "state": "test_state",
             "code_challenge": "challenge",
             "code_challenge_method": "S256",
-            "username": "testuser",
+            "username": "oauthtestuser",
             "password": "wrongpassword",
             "scope": "all"
         })
@@ -317,7 +332,7 @@ class TestTokenEndpoint:
             "state": "test_state",
             "code_challenge": challenge,
             "code_challenge_method": "S256",
-            "username": "testuser",
+            "username": "oauthtestuser",
             "password": "testpass123",
             "scope": "all"
         }, follow_redirects=False)
@@ -349,7 +364,7 @@ class TestTokenEndpoint:
         access_token = token_data["access_token"]
         payload = verify_access_token(access_token)
         assert payload is not None
-        assert payload["preferred_username"] == "testuser"
+        assert payload["preferred_username"] == "oauthtestuser"
 
     def test_token_exchange_invalid_grant_type(self, client):
         """Test token exchange with invalid grant type"""
@@ -388,7 +403,7 @@ class TestTokenEndpoint:
             "state": "test_state",
             "code_challenge": challenge,
             "code_challenge_method": "S256",
-            "username": "testuser",
+            "username": "oauthtestuser",
             "password": "testpass123",
             "scope": "all"
         }, follow_redirects=False)
@@ -422,7 +437,7 @@ class TestTokenEndpoint:
             "state": "test_state",
             "code_challenge": challenge,
             "code_challenge_method": "S256",
-            "username": "testuser",
+            "username": "oauthtestuser",
             "password": "testpass123",
             "scope": "all"
         }, follow_redirects=False)
@@ -457,7 +472,7 @@ class TestTokenEndpoint:
             "state": "test_state",
             "code_challenge": challenge,
             "code_challenge_method": "S256",
-            "username": "testuser",
+            "username": "oauthtestuser",
             "password": "testpass123",
             "scope": "all"
         }, follow_redirects=False)
@@ -520,7 +535,7 @@ class TestCompleteOAuthFlow:
             "state": state,
             "code_challenge": challenge,
             "code_challenge_method": "S256",
-            "username": "testuser",
+            "username": "oauthtestuser",
             "password": "testpass123",
             "scope": "all"
         }, follow_redirects=False)
@@ -552,7 +567,7 @@ class TestCompleteOAuthFlow:
         # 6. Verify access token
         payload = verify_access_token(access_token)
         assert payload is not None
-        assert payload["preferred_username"] == "testuser"
+        assert payload["preferred_username"] == "oauthtestuser"
         assert payload["scope"] == "all"
         assert "realm_access" in payload
         assert "roles" in payload["realm_access"]

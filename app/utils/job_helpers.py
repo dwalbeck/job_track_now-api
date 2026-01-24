@@ -24,11 +24,7 @@ def update_job_activity(db: Session, job_id: int) -> None:
         Exception: If the database update fails
     """
     try:
-        query = text("""
-            UPDATE job
-            SET last_activity = CURRENT_DATE
-            WHERE job_id = :job_id
-        """)
+        query = text("UPDATE job SET last_activity = CURRENT_DATE WHERE job_id = :job_id")
 
         db.execute(query, {"job_id": job_id})
         db.commit()
@@ -64,11 +60,14 @@ def calc_avg_score(db: Session, job_id: int) -> None:
                 SELECT round(avg(merged_tbl.outcome_score), 3) FROM
                     (SELECT outcome_score FROM calendar WHERE job_id=:job_id
                         UNION
-                     SELECT interest_level AS outcome_score FROM job WHERE job_id=:job_id2) AS merged_tbl)
+                     SELECT interest_level AS outcome_score FROM job WHERE job_id=:job_id2
+                        UNION
+	                 SELECT note_score AS outcome_score FROM note WHERE job_id=:job_id4
+                    ) AS merged_tbl)
             WHERE job_id=:job_id3
         """)
 
-        db.execute(query, {"job_id": job_id, "job_id2": job_id, "job_id3": job_id})
+        db.execute(query, {"job_id": job_id, "job_id2": job_id, "job_id3": job_id, "job_id4": job_id})
         db.commit()
 
         logger.debug(f"Updated average_score for job", job_id=job_id)
