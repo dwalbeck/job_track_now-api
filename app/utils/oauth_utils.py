@@ -2,7 +2,8 @@ import hashlib
 import base64
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+import time
+from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from jose import jwt, JWTError
 from sqlalchemy import text
@@ -11,8 +12,6 @@ from ..utils.logger import logger
 
 
 # JWT configuration
-# IMPORTANT: In production, SECRET_KEY should be loaded from environment variable
-# This ensures the same key is used across all workers
 import os
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", secrets.token_urlsafe(32))
 ALGORITHM = "HS256"
@@ -230,9 +229,9 @@ def create_access_token(
     Returns:
         str: Signed JWT token
     """
-    # Use timezone-aware datetime to ensure correct Unix timestamps
-    now = datetime.now(timezone.utc)
-    expires = now + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
+    # Use time.time() directly for reliable Unix timestamps
+    now_ts = int(time.time())
+    exp_ts = now_ts + (ACCESS_TOKEN_EXPIRE_HOURS * 3600)
 
     # Build JWT payload similar to the example provided
     payload = {
@@ -240,8 +239,8 @@ def create_access_token(
         "sub": username,  # Subject (user identifier)
         "iss": "job-track-now-api",  # Issuer
         "aud": "account",  # Audience
-        "iat": int(now.timestamp()),  # Issued at
-        "exp": int(expires.timestamp()),  # Expiration
+        "iat": now_ts,  # Issued at
+        "exp": exp_ts,  # Expiration
         # Note: nbf (not before) removed due to time sync issues between containers
         "jti": str(uuid.uuid4()),  # JWT ID (unique identifier)
 
@@ -274,7 +273,12 @@ def create_access_token(
 
     # Sign the JWT
     encoded_jwt = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-    logger.info(f"Created access token", username=username, user_id=user_id, is_admin=is_admin, expires=expires.isoformat())
+    logger.info(f"Created access token",
+               username=username,
+               user_id=user_id,
+               is_admin=is_admin,
+               iat=now_ts,
+               exp=exp_ts)
 
     return encoded_jwt
 
