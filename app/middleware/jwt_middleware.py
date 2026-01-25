@@ -1,10 +1,12 @@
 from fastapi import Request, HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+from sqlalchemy import text
 from typing import List
 
 from ..utils.oauth_utils import verify_access_token
 from ..utils.logger import logger
+from ..core.database import SessionLocal
 
 
 # Paths that don't require authentication
@@ -19,6 +21,25 @@ EXCLUDED_PATHS = [
     "/redoc",             # Alternative API documentation
     "/openapi.json"       # OpenAPI schema
 ]
+
+# Paths that require conditional authentication (only when users exist)
+# These paths are allowed without auth when no users exist in the database
+CONDITIONAL_PATHS = [
+    "/v1/user"            # User creation/update - allowed without auth when no users exist
+]
+
+
+def _check_users_empty() -> bool:
+    """Check if users table is empty (for conditional auth paths)."""
+    db = SessionLocal()
+    try:
+        result = db.execute(text("SELECT COUNT(user_id) as cnt FROM users")).first()
+        return result.cnt == 0 if result else True
+    except Exception as e:
+        logger.error("Failed to check users table in middleware", error=str(e))
+        return False
+    finally:
+        db.close()
 
 
 class JWTAuthMiddleware(BaseHTTPMiddleware):
@@ -56,6 +77,14 @@ class JWTAuthMiddleware(BaseHTTPMiddleware):
             if path.startswith(excluded_path):
                 #logger.debug(f"Skipping JWT validation for excluded path", path=path)
                 return await call_next(request)
+
+        # Check conditional paths - allow without auth if no users exist
+        for conditional_path in CONDITIONAL_PATHS:
+            if path.startswith(conditional_path):
+                # Only allow POST (create) without auth when no users exist
+                if request.method == "POST" and _check_users_empty():
+                    logger.info("Allowing unauthenticated user creation (no users exist)", path=path)
+                    return await call_next(request)
 
         # Extract Authorization header
         auth_header = request.headers.get("Authorization")

@@ -285,6 +285,11 @@ async def login(
 
         if users_result:
             # Verify hashed password
+            logger.debug(f"Attempting password verification",
+                        username=username,
+                        password_length=len(password),
+                        hash_length=len(users_result.passwd) if users_result.passwd else 0,
+                        hash_prefix=users_result.passwd[:20] if users_result.passwd else None)
             if verify_password(password, users_result.passwd):
                 authenticated = True
                 first_name = users_result.first_name
