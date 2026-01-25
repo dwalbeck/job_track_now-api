@@ -40,6 +40,9 @@ class Settings(BaseSettings):
 	# CORS - Handle both string and list formats
 	allowed_origins: Union[List[str], str] = "*"
 
+	# JWT Configuration
+	jwt_secret_key: str = ""
+
 	# AI Configuration
 	openai_api_key: str = ""
 	openai_project: str = ""

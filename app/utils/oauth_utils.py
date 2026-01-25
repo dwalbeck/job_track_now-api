@@ -12,10 +12,19 @@ from ..utils.logger import logger
 
 
 # JWT configuration
-import os
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", secrets.token_urlsafe(32))
+from ..core.config import settings
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
+
+def _get_secret_key():
+    """Get JWT secret key from settings, with fallback to random key."""
+    if settings.jwt_secret_key:
+        return settings.jwt_secret_key
+    # Fallback for development only - should never happen in production
+    return secrets.token_urlsafe(32)
+
+SECRET_KEY = _get_secret_key()
 
 
 def generate_authorization_code() -> str:
