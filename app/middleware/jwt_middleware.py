@@ -12,6 +12,7 @@ EXCLUDED_PATHS = [
     "/v1/authorize",      # OAuth authorization endpoint
     "/v1/login",          # OAuth login endpoint
     "/v1/token",          # OAuth token exchange endpoint
+    "/v1/user/empty",     # Check if users table is empty (for initial setup)
     "/health",            # Health check endpoint
     "/",                  # Root endpoint
     "/docs",              # API documentation
