@@ -2,7 +2,7 @@ import hashlib
 import base64
 import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 from jose import jwt, JWTError
 from sqlalchemy import text
@@ -230,7 +230,8 @@ def create_access_token(
     Returns:
         str: Signed JWT token
     """
-    now = datetime.utcnow()
+    # Use timezone-aware datetime to ensure correct Unix timestamps
+    now = datetime.now(timezone.utc)
     expires = now + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
 
     # Build JWT payload similar to the example provided
