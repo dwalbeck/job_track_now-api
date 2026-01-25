@@ -565,8 +565,51 @@ def _has_address_data(user_data: UserRequest) -> bool:
 # User Setting Endpoints
 # ============================================================================
 
+def get_user_setting(user_id: int, db: Session) -> UserSettingResponse:
+    """
+    Fetch user settings from database.
+    """
+    query = text("""
+        SELECT user_id, no_response_week, docx2html, odt2html, pdf2html,
+               html2docx, html2odt, html2pdf, default_llm, resume_extract_llm,
+               job_extract_llm, rewrite_llm, cover_llm, company_llm, tools_llm,
+               openai_api_key, tinymce_api_key, convertapi_key
+        FROM user_setting
+        WHERE user_id = :user_id
+    """)
+
+    result = db.execute(query, {"user_id": user_id}).first()
+
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Settings for user_id {user_id} not found"
+        )
+
+    return UserSettingResponse(
+        user_id=result.user_id,
+        no_response_week=result.no_response_week,
+        docx2html=result.docx2html,
+        odt2html=result.odt2html,
+        pdf2html=result.pdf2html,
+        html2docx=result.html2docx,
+        html2odt=result.html2odt,
+        html2pdf=result.html2pdf,
+        default_llm=result.default_llm,
+        resume_extract_llm=result.resume_extract_llm,
+        job_extract_llm=result.job_extract_llm,
+        rewrite_llm=result.rewrite_llm,
+        cover_llm=result.cover_llm,
+        company_llm=result.company_llm,
+        tools_llm=result.tools_llm,
+        openai_api_key=result.openai_api_key,
+        tinymce_api_key=result.tinymce_api_key,
+        convertapi_key=result.convertapi_key
+    )
+
+
 @router.get("/user/setting", response_model=UserSettingResponse)
-async def get_user_setting(
+async def get_user_setting_endpoint(
     user_id: int,
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: Session = Depends(get_db)
@@ -575,12 +618,6 @@ async def get_user_setting(
     Retrieve user settings by user_id.
 
     Requires authentication. Users can only access their own settings.
-
-    Args:
-        user_id: The ID of the user whose settings to retrieve
-
-    Returns:
-        UserSettingResponse with all user settings
     """
     # Verify user can only access their own settings
     token_user_id = current_user.get("user_id")
@@ -593,46 +630,9 @@ async def get_user_setting(
     logger.info("Retrieving user settings", user_id=user_id)
 
     try:
-        query = text("""
-            SELECT user_id, no_response_week, docx2html, odt2html, pdf2html,
-                   html2docx, html2odt, html2pdf, default_llm, resume_extract_llm,
-                   job_extract_llm, rewrite_llm, cover_llm, company_llm, tools_llm,
-                   openai_api_key, tinymce_api_key, convertapi_key
-            FROM user_setting
-            WHERE user_id = :user_id
-        """)
-
-        result = db.execute(query, {"user_id": user_id}).first()
-
-        if not result:
-            logger.warning("User settings not found", user_id=user_id)
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Settings for user_id {user_id} not found"
-            )
-
+        result = get_user_setting(user_id, db)
         logger.info("User settings retrieved successfully", user_id=user_id)
-
-        return UserSettingResponse(
-            user_id=result.user_id,
-            no_response_week=result.no_response_week,
-            docx2html=result.docx2html,
-            odt2html=result.odt2html,
-            pdf2html=result.pdf2html,
-            html2docx=result.html2docx,
-            html2odt=result.html2odt,
-            html2pdf=result.html2pdf,
-            default_llm=result.default_llm,
-            resume_extract_llm=result.resume_extract_llm,
-            job_extract_llm=result.job_extract_llm,
-            rewrite_llm=result.rewrite_llm,
-            cover_llm=result.cover_llm,
-            company_llm=result.company_llm,
-            tools_llm=result.tools_llm,
-            openai_api_key=result.openai_api_key,
-            tinymce_api_key=result.tinymce_api_key,
-            convertapi_key=result.convertapi_key
-        )
+        return result
 
     except HTTPException:
         raise
@@ -794,7 +794,7 @@ async def create_or_update_user_setting(
         db.commit()
 
         # Fetch and return the saved settings
-        return await get_user_setting(user_id, db)
+        return get_user_setting(user_id, db)
 
     except HTTPException:
         raise
