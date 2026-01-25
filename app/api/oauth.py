@@ -267,7 +267,7 @@ async def login(
     """
     logger.info(f"Login attempt", username=username)
 
-    # Authenticate user - first try users table, then fall back to personal table
+    # Authenticate user - users table
     try:
         first_name = None
         last_name = None

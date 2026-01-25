@@ -458,12 +458,12 @@ async def convert_file(
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Convert resume file using personal configuration settings.
+    Convert resume file using user configuration settings.
 
     This endpoint:
     1. Retrieves resume and resume_detail data from database
     2. Determines input and output paths based on source/target formats
-    3. Calls Conversion.convert_file() with personal settings
+    3. Calls Conversion.convert_file() with user settings
     4. Returns the filename and content (for md/html targets)
 
     For baseline resumes (source: docx, odt, pdf):

@@ -493,7 +493,7 @@ async def download_company_report(
         # Output path for DOCX
         output_path = os.path.join(settings.report_dir, filename)
 
-        # Convert HTML to DOCX using personal settings
+        # Convert HTML to DOCX using user settings
         success = Conversion.convert_file('html', 'docx', temp_html_path, output_path)
 
         # Clean up temp file
