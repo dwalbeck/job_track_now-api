@@ -249,7 +249,7 @@ def create_access_token(
         "scope": scope,
         "preferred_username": username,
         "email_verified": False,
-        "auth_time": int(now.timestamp()),
+        "auth_time": now_ts,
         "acr": "1",  # Authentication Context Class Reference
         "azp": "job-tracker-client",  # Authorized party
 
