@@ -1,4 +1,5 @@
 import os
+from fastapi import Depends
 from docx import Document
 from docx.shared import Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -6,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 from ..core.config import settings
 from ..utils.logger import logger
+from ..middleware.auth_middleware import get_current_user
 
 
 class Conversion:
@@ -1672,12 +1674,15 @@ class Conversion:
             import convertapi
             import threading
 
+            current_user: dict = Depends(get_current_user)
+            user_id = Depends(get_current_user)
+
             if not os.path.exists(input_path):
                 logger.error(f"Input file not found", input_path=input_path)
                 return False
 
             # Get ConvertAPI key from database
-            api_key = cls._get_convertapi_key()
+            api_key = cls._get_convertapi_key(user_id)
             if not api_key:
                 logger.error("ConvertAPI key not available, cannot proceed with conversion")
                 return False

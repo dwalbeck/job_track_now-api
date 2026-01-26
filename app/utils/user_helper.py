@@ -150,6 +150,7 @@ def get_user_settings(db: Session, user_id: int) -> Optional[Dict[str, Any]]:
                 "html2odt": result.html2odt or "pandoc",
                 "html2pdf": result.html2pdf or "weasyprint"
             }
+        logger.error(f"Failed to query user settings", user_id=user_id)
         return None
 
     except Exception as e:

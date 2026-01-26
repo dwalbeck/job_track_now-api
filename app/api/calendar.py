@@ -18,7 +18,7 @@ router = APIRouter()
 async def get_job_appointments(
     job_id: int = Query(..., description="Job ID to get appointments for"),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: str = Depends(get_current_user)
 ):
     """
     Get all appointments for a specific job.
