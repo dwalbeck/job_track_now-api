@@ -3,6 +3,12 @@ from unittest.mock import patch
 from sqlalchemy import text
 
 
+# Helper to get test user ID
+def get_test_user_id(test_db):
+    result = test_db.execute(text("SELECT user_id FROM users WHERE login = 'testuser'")).first()
+    return result.user_id if result else 1
+
+
 class TestCreateOrUpdateContact:
     """Test suite for POST /v1/contact endpoint."""
 
@@ -37,11 +43,12 @@ class TestCreateOrUpdateContact:
     @patch('app.api.contacts.update_job_activity')
     def test_create_contact_with_job_link(self, mock_update_activity, client, test_db):
         """Test creating a contact and linking to a job."""
+        user_id = get_test_user_id(test_db)
         # Create test job
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.commit()
 
         contact_data = {
@@ -71,11 +78,12 @@ class TestCreateOrUpdateContact:
     @patch('app.api.contacts.update_job_activity')
     def test_update_contact(self, mock_update_activity, client, test_db):
         """Test updating an existing contact."""
+        user_id = get_test_user_id(test_db)
         # Create initial contact
         test_db.execute(text("""
-            INSERT INTO contact (contact_id, first_name, last_name, email, phone, contact_active)
-            VALUES (1, 'Old', 'Name', 'old@example.com', '555-0000', true)
-        """))
+            INSERT INTO contact (contact_id, user_id, first_name, last_name, email, phone, contact_active)
+            VALUES (1, :user_id, 'Old', 'Name', 'old@example.com', '555-0000', true)
+        """), {"user_id": user_id})
         test_db.commit()
 
         update_data = {
@@ -112,15 +120,16 @@ class TestCreateOrUpdateContact:
     @patch('app.api.contacts.update_job_activity')
     def test_create_contact_duplicate_job_link(self, mock_update_activity, client, test_db):
         """Test creating duplicate job_contact link doesn't cause error."""
+        user_id = get_test_user_id(test_db)
         # Create test job and contact
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO contact (contact_id, first_name, last_name, contact_active)
-            VALUES (1, 'Test', 'Contact', true)
-        """))
+            INSERT INTO contact (contact_id, user_id, first_name, last_name, contact_active)
+            VALUES (1, :user_id, 'Test', 'Contact', true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO job_contact (job_id, contact_id)
             VALUES (1, 1)
@@ -146,11 +155,12 @@ class TestDeleteContact:
 
     def test_delete_contact_success(self, client, test_db):
         """Test successfully deleting a contact."""
+        user_id = get_test_user_id(test_db)
         # Create test contact
         test_db.execute(text("""
-            INSERT INTO contact (contact_id, first_name, last_name, contact_active)
-            VALUES (1, 'Delete', 'Me', true)
-        """))
+            INSERT INTO contact (contact_id, user_id, first_name, last_name, contact_active)
+            VALUES (1, :user_id, 'Delete', 'Me', true)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.delete("/v1/contact/1")
@@ -175,11 +185,12 @@ class TestGetContact:
 
     def test_get_contact_success(self, client, test_db):
         """Test getting a contact by ID."""
+        user_id = get_test_user_id(test_db)
         # Create test contact
         test_db.execute(text("""
-            INSERT INTO contact (contact_id, first_name, last_name, job_title, email, phone, company, linkedin, contact_note, contact_active)
-            VALUES (1, 'John', 'Doe', 'Recruiter', 'john@example.com', '555-1234', 'Tech Corp', 'linkedin.com/in/john', 'Great contact', true)
-        """))
+            INSERT INTO contact (contact_id, user_id, first_name, last_name, job_title, email, phone, company, linkedin, contact_note, contact_active)
+            VALUES (1, :user_id, 'John', 'Doe', 'Recruiter', 'john@example.com', '555-1234', 'Tech Corp', 'linkedin.com/in/john', 'Great contact', true)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/contact/1")
@@ -195,17 +206,18 @@ class TestGetContact:
 
     def test_get_contact_with_job_links(self, client, test_db):
         """Test getting a contact with linked jobs."""
+        user_id = get_test_user_id(test_db)
         # Create test data
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
             VALUES
-                (1, 'Company A', 'Engineer', 'applied', true, 'company_a_engineer'),
-                (2, 'Company B', 'Developer', 'interviewing', true, 'company_b_developer')
-        """))
+                (1, :user_id, 'Company A', 'Engineer', 'applied', true, 'company_a_engineer'),
+                (2, :user_id, 'Company B', 'Developer', 'interviewing', true, 'company_b_developer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO contact (contact_id, first_name, last_name, contact_active)
-            VALUES (1, 'Jane', 'Smith', true)
-        """))
+            INSERT INTO contact (contact_id, user_id, first_name, last_name, contact_active)
+            VALUES (1, :user_id, 'Jane', 'Smith', true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO job_contact (job_id, contact_id)
             VALUES (1, 1), (2, 1)
@@ -224,17 +236,18 @@ class TestGetContact:
 
     def test_get_contact_filtered_by_job(self, client, test_db):
         """Test getting a contact filtered by specific job."""
+        user_id = get_test_user_id(test_db)
         # Create test data
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
             VALUES
-                (1, 'Company A', 'Engineer', 'applied', true, 'company_a_engineer'),
-                (2, 'Company B', 'Developer', 'interviewing', true, 'company_b_developer')
-        """))
+                (1, :user_id, 'Company A', 'Engineer', 'applied', true, 'company_a_engineer'),
+                (2, :user_id, 'Company B', 'Developer', 'interviewing', true, 'company_b_developer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO contact (contact_id, first_name, last_name, contact_active)
-            VALUES (1, 'Test', 'Contact', true)
-        """))
+            INSERT INTO contact (contact_id, user_id, first_name, last_name, contact_active)
+            VALUES (1, :user_id, 'Test', 'Contact', true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO job_contact (job_id, contact_id)
             VALUES (1, 1), (2, 1)
@@ -259,10 +272,11 @@ class TestGetContact:
 
     def test_get_contact_inactive(self, client, test_db):
         """Test that inactive contacts return 404."""
+        user_id = get_test_user_id(test_db)
         test_db.execute(text("""
-            INSERT INTO contact (contact_id, first_name, last_name, contact_active)
-            VALUES (1, 'Inactive', 'Contact', false)
-        """))
+            INSERT INTO contact (contact_id, user_id, first_name, last_name, contact_active)
+            VALUES (1, :user_id, 'Inactive', 'Contact', false)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/contact/1")
@@ -282,14 +296,15 @@ class TestGetContacts:
 
     def test_get_all_contacts(self, client, test_db):
         """Test getting all active contacts."""
+        user_id = get_test_user_id(test_db)
         # Create test contacts
         test_db.execute(text("""
-            INSERT INTO contact (contact_id, first_name, last_name, email, contact_active)
+            INSERT INTO contact (contact_id, user_id, first_name, last_name, email, contact_active)
             VALUES
-                (1, 'Alice', 'Anderson', 'alice@example.com', true),
-                (2, 'Bob', 'Brown', 'bob@example.com', true),
-                (3, 'Charlie', 'Chen', 'charlie@example.com', false)
-        """))
+                (1, :user_id, 'Alice', 'Anderson', 'alice@example.com', true),
+                (2, :user_id, 'Bob', 'Brown', 'bob@example.com', true),
+                (3, :user_id, 'Charlie', 'Chen', 'charlie@example.com', false)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/contacts")
@@ -304,17 +319,18 @@ class TestGetContacts:
 
     def test_get_contacts_filtered_by_job(self, client, test_db):
         """Test getting contacts filtered by job_id."""
+        user_id = get_test_user_id(test_db)
         # Create test data
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO contact (contact_id, first_name, last_name, contact_active)
+            INSERT INTO contact (contact_id, user_id, first_name, last_name, contact_active)
             VALUES
-                (1, 'Linked', 'Contact', true),
-                (2, 'Unlinked', 'Contact', true)
-        """))
+                (1, :user_id, 'Linked', 'Contact', true),
+                (2, :user_id, 'Unlinked', 'Contact', true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO job_contact (job_id, contact_id)
             VALUES (1, 1)
@@ -331,12 +347,13 @@ class TestGetContacts:
 
     def test_get_contacts_excludes_inactive(self, client, test_db):
         """Test that inactive contacts are excluded."""
+        user_id = get_test_user_id(test_db)
         test_db.execute(text("""
-            INSERT INTO contact (contact_id, first_name, last_name, contact_active)
+            INSERT INTO contact (contact_id, user_id, first_name, last_name, contact_active)
             VALUES
-                (1, 'Active', 'Contact', true),
-                (2, 'Inactive', 'Contact', false)
-        """))
+                (1, :user_id, 'Active', 'Contact', true),
+                (2, :user_id, 'Inactive', 'Contact', false)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/contacts")
@@ -349,14 +366,15 @@ class TestGetContacts:
 
     def test_get_contacts_sorted_by_name(self, client, test_db):
         """Test that contacts are sorted alphabetically."""
+        user_id = get_test_user_id(test_db)
         test_db.execute(text("""
-            INSERT INTO contact (contact_id, first_name, last_name, contact_active)
+            INSERT INTO contact (contact_id, user_id, first_name, last_name, contact_active)
             VALUES
-                (1, 'Zoe', 'Zulu', true),
-                (2, 'Alice', 'Adams', true),
-                (3, 'Alice', 'Zeta', true),
-                (4, 'Bob', 'Baker', true)
-        """))
+                (1, :user_id, 'Zoe', 'Zulu', true),
+                (2, :user_id, 'Alice', 'Adams', true),
+                (3, :user_id, 'Alice', 'Zeta', true),
+                (4, :user_id, 'Bob', 'Baker', true)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/contacts")

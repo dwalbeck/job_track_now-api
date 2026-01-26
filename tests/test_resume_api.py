@@ -4,6 +4,12 @@ from sqlalchemy import text
 from io import BytesIO
 
 
+# Helper to get test user ID
+def get_test_user_id(test_db):
+    result = test_db.execute(text("SELECT user_id FROM users WHERE login = 'testuser'")).first()
+    return result.user_id if result else 1
+
+
 class TestGetBaselineResumes:
     """Test suite for GET /v1/resume/baseline endpoint."""
 
@@ -16,14 +22,15 @@ class TestGetBaselineResumes:
 
     def test_get_baseline_resumes_multiple(self, client, test_db):
         """Test getting multiple baseline resumes."""
+        user_id = get_test_user_id(test_db)
         # Create test resumes
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
             VALUES
-                (1, 'Default Resume', 'default.pdf', 'pdf', true, true, true),
-                (2, 'Alternative Resume', 'alt.docx', 'docx', true, false, true),
-                (3, 'Old Resume', 'old.pdf', 'pdf', true, false, true)
-        """))
+                (1, :user_id, 'Default Resume', 'default.pdf', 'pdf', true, true, true),
+                (2, :user_id, 'Alternative Resume', 'alt.docx', 'docx', true, false, true),
+                (3, :user_id, 'Old Resume', 'old.pdf', 'pdf', true, false, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO resume_detail (resume_id, keyword_count, focus_count)
             VALUES
@@ -47,12 +54,13 @@ class TestGetBaselineResumes:
 
     def test_get_baseline_resumes_excludes_inactive(self, client, test_db):
         """Test that inactive resumes are excluded."""
+        user_id = get_test_user_id(test_db)
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
             VALUES
-                (1, 'Active Resume', 'active.pdf', 'pdf', true, false, true),
-                (2, 'Deleted Resume', 'deleted.pdf', 'pdf', true, false, false)
-        """))
+                (1, :user_id, 'Active Resume', 'active.pdf', 'pdf', true, false, true),
+                (2, :user_id, 'Deleted Resume', 'deleted.pdf', 'pdf', true, false, false)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/resume/baseline")
@@ -76,13 +84,14 @@ class TestGetBaselineResumeList:
 
     def test_get_baseline_list_ordered_by_created(self, client, test_db):
         """Test that baseline list is ordered by resume_created DESC."""
+        user_id = get_test_user_id(test_db)
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active, resume_created)
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active, resume_created)
             VALUES
-                (1, 'Oldest', 'oldest.pdf', 'pdf', true, false, true, '2024-01-01'),
-                (2, 'Newest', 'newest.pdf', 'pdf', true, true, true, '2025-01-15'),
-                (3, 'Middle', 'middle.pdf', 'pdf', true, false, true, '2024-06-01')
-        """))
+                (1, :user_id, 'Oldest', 'oldest.pdf', 'pdf', true, false, true, '2024-01-01'),
+                (2, :user_id, 'Newest', 'newest.pdf', 'pdf', true, true, true, '2025-01-15'),
+                (3, :user_id, 'Middle', 'middle.pdf', 'pdf', true, false, true, '2024-06-01')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/resume/baseline/list")
@@ -109,25 +118,26 @@ class TestGetJobResumes:
 
     def test_get_job_resumes_multiple(self, client, test_db):
         """Test getting multiple job-specific resumes."""
+        user_id = get_test_user_id(test_db)
         # Create test jobs
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
             VALUES
-                (1, 'Google', 'SWE', 'applied', true, 'google_swe'),
-                (2, 'Meta', 'Engineer', 'interviewing', true, 'meta_engineer')
-        """))
+                (1, :user_id, 'Google', 'SWE', 'applied', true, 'google_swe'),
+                (2, :user_id, 'Meta', 'Engineer', 'interviewing', true, 'meta_engineer')
+        """), {"user_id": user_id})
         # Create baseline resume
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (10, 'Baseline', 'baseline.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (10, :user_id, 'Baseline', 'baseline.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         # Create job resumes
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active, job_id, baseline_resume_id)
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active, job_id, baseline_resume_id)
             VALUES
-                (1, 'Google Resume', 'google.html', 'html', false, false, true, 1, 10),
-                (2, 'Meta Resume', 'meta.html', 'html', false, false, true, 2, 10)
-        """))
+                (1, :user_id, 'Google Resume', 'google.html', 'html', false, false, true, 1, 10),
+                (2, :user_id, 'Meta Resume', 'meta.html', 'html', false, false, true, 2, 10)
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO resume_detail (resume_id, keyword_count, focus_count, baseline_score, rewrite_score)
             VALUES
@@ -153,10 +163,11 @@ class TestGetResume:
 
     def test_get_resume_success(self, client, test_db):
         """Test getting a resume by ID."""
+        user_id = get_test_user_id(test_db)
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Test Resume', 'test.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Test Resume', 'test.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/resume/1")
@@ -185,10 +196,11 @@ class TestGetResumeDetail:
 
     def test_get_resume_detail_success(self, client, test_db):
         """Test getting resume detail."""
+        user_id = get_test_user_id(test_db)
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Test Resume', 'test.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Test Resume', 'test.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO resume_detail (resume_id, resume_markdown, resume_html, keyword_count, focus_count, baseline_score, rewrite_score)
             VALUES (1, '# Resume', '<h1>Resume</h1>', 25, 10, 75, 90)
@@ -248,11 +260,12 @@ class TestCreateOrUpdateResume:
     @patch('app.api.resume.update_job_activity')
     def test_create_job_resume(self, mock_update_activity, client, test_db):
         """Test creating a job-specific resume."""
+        user_id = get_test_user_id(test_db)
         # Create test job
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.commit()
 
         html_content = b'<html><body>Resume</body></html>'
@@ -288,13 +301,14 @@ class TestCreateOrUpdateResume:
 
     def test_update_resume_set_default(self, client, test_db):
         """Test setting a resume as default."""
+        user_id = get_test_user_id(test_db)
         # Create two resumes
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
             VALUES
-                (1, 'Resume 1', 'r1.pdf', 'pdf', true, true, true),
-                (2, 'Resume 2', 'r2.pdf', 'pdf', true, false, true)
-        """))
+                (1, :user_id, 'Resume 1', 'r1.pdf', 'pdf', true, true, true),
+                (2, :user_id, 'Resume 2', 'r2.pdf', 'pdf', true, false, true)
+        """), {"user_id": user_id})
         test_db.commit()
 
         data = {
@@ -321,10 +335,11 @@ class TestUpdateResumeJSON:
     @patch('app.api.resume.update_job_activity')
     def test_update_resume_json_success(self, mock_update_activity, client, test_db):
         """Test updating resume via JSON."""
+        user_id = get_test_user_id(test_db)
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Old Title', 'old.pdf', 'pdf', true, false, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Old Title', 'old.pdf', 'pdf', true, false, true)
+        """), {"user_id": user_id})
         test_db.commit()
 
         update_data = {
@@ -371,10 +386,11 @@ class TestCreateOrUpdateResumeDetail:
 
     def test_create_resume_detail_success(self, client, test_db):
         """Test creating resume detail."""
+        user_id = get_test_user_id(test_db)
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Test Resume', 'test.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Test Resume', 'test.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.commit()
 
         detail_data = {
@@ -402,10 +418,11 @@ class TestCreateOrUpdateResumeDetail:
 
     def test_update_resume_detail_success(self, client, test_db):
         """Test updating existing resume detail."""
+        user_id = get_test_user_id(test_db)
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Test Resume', 'test.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Test Resume', 'test.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO resume_detail (resume_id, resume_markdown, keyword_count)
             VALUES (1, '# Old', 5)
@@ -444,10 +461,11 @@ class TestDeleteResume:
 
     def test_delete_resume_success(self, client, test_db):
         """Test deleting a resume."""
+        user_id = get_test_user_id(test_db)
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Delete Me', 'delete.pdf', 'pdf', true, false, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Delete Me', 'delete.pdf', 'pdf', true, false, true)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.delete("/v1/resume?resume_id=1")
@@ -471,11 +489,12 @@ class TestCloneResume:
 
     def test_clone_baseline_resume(self, client, test_db):
         """Test cloning a baseline resume."""
+        user_id = get_test_user_id(test_db)
         # Create original resume
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Original', 'original.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Original', 'original.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO resume_detail (resume_id, resume_markdown, keyword_count)
             VALUES (1, '# Original Resume', 10)
@@ -511,11 +530,12 @@ class TestResumeExtraction:
     @patch('app.api.resume._convert_to_markdown')
     def test_extract_resume_success(self, mock_convert, mock_extraction, client, test_db):
         """Test successful resume extraction."""
+        user_id = get_test_user_id(test_db)
         # Create test resume
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Test Resume', 'test.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Test Resume', 'test.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.commit()
 
         # Mock conversion
@@ -549,20 +569,21 @@ class TestResumeRewrite:
 
     def test_rewrite_resume_initiates_process(self, client, test_db):
         """Test that resume rewrite initiates a background process and returns 202 with process_id."""
+        user_id = get_test_user_id(test_db)
         # Create test job with job_detail
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO job_detail (job_id, job_desc, job_keyword)
             VALUES (1, 'Test job description', ARRAY['Python', 'AWS'])
         """))
         # Create baseline resume and associate with job
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Baseline', 'baseline.html', 'html', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Baseline', 'baseline.html', 'html', true, true, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO resume_detail (resume_id, resume_html, keyword_final, focus_final, baseline_score)
             VALUES (1, '<h1>Resume Content</h1>', ARRAY['Python'], ARRAY['AWS'], 75)
@@ -602,11 +623,12 @@ class TestResumeRewrite:
 
     def test_rewrite_resume_no_resume_associated(self, client, test_db):
         """Test rewrite with job that has no resume."""
+        user_id = get_test_user_id(test_db)
         # Create job without resume
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.post("/v1/resume/rewrite", json={'job_id': 1})
@@ -620,21 +642,22 @@ class TestResumeRewrite:
         the background thread to complete, ensuring HTTP connection is not blocked.
         """
         import time
+        user_id = get_test_user_id(test_db)
 
         # Create test job with job_detail
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO job_detail (job_id, job_desc, job_keyword)
             VALUES (1, 'Test job description', ARRAY['Python', 'AWS'])
         """))
         # Create baseline resume and associate with job
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Baseline', 'baseline.html', 'html', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Baseline', 'baseline.html', 'html', true, true, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO resume_detail (resume_id, resume_html, keyword_final, focus_final, baseline_score)
             VALUES (1, '<h1>Resume Content</h1>', ARRAY['Python'], ARRAY['AWS'], 75)
@@ -672,16 +695,17 @@ class TestGetRewriteData:
 
     def test_get_rewrite_data_success(self, client, test_db):
         """Test retrieving resume rewrite data after process completes."""
+        user_id = get_test_user_id(test_db)
         # Create test job
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         # Create resume with rewrite data
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Test Resume', 'test.html', 'html', false, false, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Test Resume', 'test.html', 'html', false, false, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO resume_detail (resume_id, resume_html, resume_html_rewrite, suggestion, baseline_score, rewrite_score)
             VALUES (1, '<h1>Original</h1>', '<h1>Rewritten</h1>', ARRAY['Suggestion 1', 'Suggestion 2'], 75, 92)

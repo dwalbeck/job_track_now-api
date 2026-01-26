@@ -3,24 +3,31 @@ from unittest.mock import patch, MagicMock, mock_open
 from sqlalchemy import text
 
 
+# Helper to get test user ID
+def get_test_user_id(test_db):
+    result = test_db.execute(text("SELECT user_id FROM users WHERE login = 'testuser'")).first()
+    return result.user_id if result else 1
+
+
 class TestGetLetter:
     """Test suite for GET /v1/letter endpoint."""
 
     def test_get_letter_success(self, client, test_db):
         """Test getting a cover letter by ID."""
+        user_id = get_test_user_id(test_db)
         # Create test data
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory, average_score)
-            VALUES (1, 'Tech Corp', 'Engineer', 'applied', true, 'tech_corp_engineer', 0.0)
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory, average_score)
+            VALUES (1, :user_id, 'Tech Corp', 'Engineer', 'applied', true, 'tech_corp_engineer', 0.0)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Main Resume', 'resume.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Main Resume', 'resume.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO cover_letter (cover_id, resume_id, job_id, letter_length, letter_tone, instruction, letter_content, file_name)
-            VALUES (1, 1, 1, 'medium', 'professional', 'Focus on technical skills', '<p>Dear Hiring Manager,</p>', 'cover.docx')
-        """))
+            INSERT INTO cover_letter (cover_id, user_id, resume_id, job_id, letter_length, letter_tone, instruction, letter_content, file_name)
+            VALUES (1, :user_id, 1, 1, 'medium', 'professional', 'Focus on technical skills', '<p>Dear Hiring Manager,</p>', 'cover.docx')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/letter?cover_id=1")
@@ -44,19 +51,20 @@ class TestGetLetter:
 
     def test_get_letter_with_null_filename(self, client, test_db):
         """Test getting a cover letter with NULL file_name."""
+        user_id = get_test_user_id(test_db)
         # Create test data with NULL file_name
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory, average_score)
-            VALUES (1, 'Test Co', 'Developer', 'applied', true, 'test_co_developer', 0.0)
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory, average_score)
+            VALUES (1, :user_id, 'Test Co', 'Developer', 'applied', true, 'test_co_developer', 0.0)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Resume', 'resume.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Resume', 'resume.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO cover_letter (cover_id, resume_id, job_id, letter_length, letter_tone, letter_content, file_name)
-            VALUES (1, 1, 1, 'short', 'casual', '<p>Letter content</p>', NULL)
-        """))
+            INSERT INTO cover_letter (cover_id, user_id, resume_id, job_id, letter_length, letter_tone, letter_content, file_name)
+            VALUES (1, :user_id, 1, 1, 'short', 'casual', '<p>Letter content</p>', NULL)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/letter?cover_id=1")
@@ -78,23 +86,24 @@ class TestGetLetterList:
 
     def test_get_letter_list_multiple(self, client, test_db):
         """Test getting multiple cover letters."""
+        user_id = get_test_user_id(test_db)
         # Create test data
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory, average_score)
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory, average_score)
             VALUES
-                (1, 'Company A', 'Engineer', 'applied', true, 'company_a_engineer'),
-                (2, 'Company B', 'Developer', 'applied', true, 'company_b_developer')
-        """))
+                (1, :user_id, 'Company A', 'Engineer', 'applied', true, 'company_a_engineer', 0.0),
+                (2, :user_id, 'Company B', 'Developer', 'applied', true, 'company_b_developer', 0.0)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Resume', 'resume.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Resume', 'resume.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO cover_letter (cover_id, resume_id, job_id, letter_length, letter_tone, letter_active)
+            INSERT INTO cover_letter (cover_id, user_id, resume_id, job_id, letter_length, letter_tone, letter_active)
             VALUES
-                (1, 1, 1, 'medium', 'professional', true),
-                (2, 1, 2, 'long', 'enthusiastic', true)
-        """))
+                (1, :user_id, 1, 1, 'medium', 'professional', true),
+                (2, :user_id, 1, 2, 'long', 'enthusiastic', true)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/letter/list")
@@ -109,21 +118,22 @@ class TestGetLetterList:
 
     def test_get_letter_list_excludes_inactive(self, client, test_db):
         """Test that inactive letters are excluded from list."""
+        user_id = get_test_user_id(test_db)
         # Create test data
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory, average_score)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer', 0.0)
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory, average_score)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer', 0.0)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Resume', 'resume.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Resume', 'resume.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO cover_letter (cover_id, resume_id, job_id, letter_length, letter_tone, letter_active)
+            INSERT INTO cover_letter (cover_id, user_id, resume_id, job_id, letter_length, letter_tone, letter_active)
             VALUES
-                (1, 1, 1, 'medium', 'professional', true),
-                (2, 1, 1, 'short', 'casual', false)
-        """))
+                (1, :user_id, 1, 1, 'medium', 'professional', true),
+                (2, :user_id, 1, 1, 'short', 'casual', false)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/letter/list")
@@ -141,15 +151,16 @@ class TestSaveLetter:
     @patch('app.api.letter.update_job_activity')
     def test_create_letter_success(self, mock_update_activity, client, test_db):
         """Test creating a new cover letter."""
+        user_id = get_test_user_id(test_db)
         # Create test job and resume
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory, average_score)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer', 0.0)
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory, average_score)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer', 0.0)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Resume', 'resume.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Resume', 'resume.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.commit()
 
         letter_data = {
@@ -183,19 +194,20 @@ class TestSaveLetter:
     @patch('app.api.letter.update_job_activity')
     def test_update_letter_success(self, mock_update_activity, client, test_db):
         """Test updating an existing cover letter."""
+        user_id = get_test_user_id(test_db)
         # Create test data
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory, average_score)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer', 0.0)
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory, average_score)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer', 0.0)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Resume', 'resume.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Resume', 'resume.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO cover_letter (cover_id, resume_id, job_id, letter_length, letter_tone, letter_content)
-            VALUES (1, 1, 1, 'short', 'casual', '<p>Old content</p>')
-        """))
+            INSERT INTO cover_letter (cover_id, user_id, resume_id, job_id, letter_length, letter_tone, letter_content)
+            VALUES (1, :user_id, 1, 1, 'short', 'casual', '<p>Old content</p>')
+        """), {"user_id": user_id})
         test_db.commit()
 
         update_data = {
@@ -254,19 +266,20 @@ class TestDeleteLetter:
 
     def test_delete_letter_success(self, client, test_db):
         """Test successfully deleting a cover letter."""
+        user_id = get_test_user_id(test_db)
         # Create test data
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory, average_score)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer', 0.0)
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory, average_score)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer', 0.0)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Resume', 'resume.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Resume', 'resume.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO cover_letter (cover_id, resume_id, job_id, letter_length, letter_tone, letter_active)
-            VALUES (1, 1, 1, 'medium', 'professional', true)
-        """))
+            INSERT INTO cover_letter (cover_id, user_id, resume_id, job_id, letter_length, letter_tone, letter_active)
+            VALUES (1, :user_id, 1, 1, 'medium', 'professional', true)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.delete("/v1/letter?cover_id=1")
@@ -292,27 +305,28 @@ class TestWriteCoverLetter:
     @patch('app.api.letter.AiAgent')
     def test_write_cover_letter_success(self, mock_ai_agent_class, client, test_db):
         """Test generating cover letter with AI."""
+        user_id = get_test_user_id(test_db)
         # Create test data
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory, average_score)
-            VALUES (1, 'Tech Corp', 'Senior Engineer', 'applied', true, 'tech_corp_engineer', 0.0)
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory, average_score)
+            VALUES (1, :user_id, 'Tech Corp', 'Senior Engineer', 'applied', true, 'tech_corp_engineer', 0.0)
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO job_detail (job_id, job_desc)
             VALUES (1, 'Build amazing software')
         """))
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Resume', 'resume.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Resume', 'resume.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO resume_detail (resume_id, resume_md_rewrite)
             VALUES (1, '# Resume Content')
         """))
         test_db.execute(text("""
-            INSERT INTO cover_letter (cover_id, resume_id, job_id, letter_length, letter_tone, instruction)
-            VALUES (1, 1, 1, 'medium', 'professional', 'Focus on leadership')
-        """))
+            INSERT INTO cover_letter (cover_id, user_id, resume_id, job_id, letter_length, letter_tone, instruction)
+            VALUES (1, :user_id, 1, 1, 'medium', 'professional', 'Focus on leadership')
+        """), {"user_id": user_id})
         test_db.commit()
 
         # Mock AI agent
@@ -358,27 +372,28 @@ class TestWriteCoverLetter:
     @patch('app.api.letter.AiAgent')
     def test_write_cover_letter_ai_error(self, mock_ai_agent_class, client, test_db):
         """Test handling AI generation errors."""
+        user_id = get_test_user_id(test_db)
         # Create test data
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory, average_score)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer', 0.0)
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory, average_score)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer', 0.0)
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO job_detail (job_id, job_desc)
             VALUES (1, 'Job description')
         """))
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Resume', 'resume.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Resume', 'resume.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO resume_detail (resume_id, resume_md_rewrite)
             VALUES (1, '# Resume')
         """))
         test_db.execute(text("""
-            INSERT INTO cover_letter (cover_id, resume_id, job_id, letter_length, letter_tone)
-            VALUES (1, 1, 1, 'medium', 'professional')
-        """))
+            INSERT INTO cover_letter (cover_id, user_id, resume_id, job_id, letter_length, letter_tone)
+            VALUES (1, :user_id, 1, 1, 'medium', 'professional')
+        """), {"user_id": user_id})
         test_db.commit()
 
         # Mock AI agent to return empty result
@@ -401,20 +416,21 @@ class TestConvertCoverLetter:
     def test_convert_cover_letter_success(self, mock_settings, mock_makedirs, mock_subprocess, client, test_db):
         """Test converting cover letter to DOCX."""
         mock_settings.cover_letter_dir = '/app/cover_letters'
+        user_id = get_test_user_id(test_db)
 
         # Create test data
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory, average_score)
-            VALUES (1, 'Tech Corp', 'Software Engineer', 'applied', true, 'tech_corp_engineer', 0.0)
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory, average_score)
+            VALUES (1, :user_id, 'Tech Corp', 'Software Engineer', 'applied', true, 'tech_corp_engineer', 0.0)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Resume', 'resume.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Resume', 'resume.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO cover_letter (cover_id, resume_id, job_id, letter_length, letter_tone, letter_content)
-            VALUES (1, 1, 1, 'medium', 'professional', '<p>Cover letter HTML content</p>')
-        """))
+            INSERT INTO cover_letter (cover_id, user_id, resume_id, job_id, letter_length, letter_tone, letter_content)
+            VALUES (1, :user_id, 1, 1, 'medium', 'professional', '<p>Cover letter HTML content</p>')
+        """), {"user_id": user_id})
         test_db.commit()
 
         # Mock successful pandoc conversion
@@ -466,19 +482,20 @@ class TestConvertCoverLetter:
 
     def test_convert_cover_letter_empty_content(self, client, test_db):
         """Test convert with empty letter content."""
+        user_id = get_test_user_id(test_db)
         # Create test data with NULL letter_content
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory, average_score)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer', 0.0)
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory, average_score)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer', 0.0)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Resume', 'resume.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Resume', 'resume.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO cover_letter (cover_id, resume_id, job_id, letter_length, letter_tone, letter_content)
-            VALUES (1, 1, 1, 'medium', 'professional', NULL)
-        """))
+            INSERT INTO cover_letter (cover_id, user_id, resume_id, job_id, letter_length, letter_tone, letter_content)
+            VALUES (1, :user_id, 1, 1, 'medium', 'professional', NULL)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.post("/v1/letter/convert", json={
@@ -495,20 +512,21 @@ class TestConvertCoverLetter:
     def test_convert_cover_letter_filename_sanitization(self, mock_settings, mock_makedirs, mock_subprocess, client, test_db):
         """Test that filename is properly sanitized."""
         mock_settings.cover_letter_dir = '/app/cover_letters'
+        user_id = get_test_user_id(test_db)
 
         # Create test data with special characters in company/title
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory, average_score)
-            VALUES (1, 'Company/Inc.', 'Software: Engineer*', 'applied', true, 'company_inc_engineer', 0.0)
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory, average_score)
+            VALUES (1, :user_id, 'Company/Inc.', 'Software: Engineer*', 'applied', true, 'company_inc_engineer', 0.0)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO resume (resume_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
-            VALUES (1, 'Resume', 'resume.pdf', 'pdf', true, true, true)
-        """))
+            INSERT INTO resume (resume_id, user_id, resume_title, file_name, original_format, is_baseline, is_default, is_active)
+            VALUES (1, :user_id, 'Resume', 'resume.pdf', 'pdf', true, true, true)
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO cover_letter (cover_id, resume_id, job_id, letter_length, letter_tone, letter_content)
-            VALUES (1, 1, 1, 'medium', 'professional', '<p>Content</p>')
-        """))
+            INSERT INTO cover_letter (cover_id, user_id, resume_id, job_id, letter_length, letter_tone, letter_content)
+            VALUES (1, :user_id, 1, 1, 'medium', 'professional', '<p>Content</p>')
+        """), {"user_id": user_id})
         test_db.commit()
 
         mock_subprocess.return_value = MagicMock(returncode=0)

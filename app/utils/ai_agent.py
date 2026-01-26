@@ -707,7 +707,7 @@ class AiAgent:
 			print(f"DEBUG write_cover_letter: Full response:\n{response_text[:2000]}", file=sys.stderr, flush=True)
 			raise ValueError(f"Failed to parse AI response as JSON: {str(e)}")
 
-	def resume_rewrite_process(self, job_id: int, process_id: int) -> None:
+	def resume_rewrite_process(self, job_id: int, process_id: int, user_id: int) -> None:
 		"""
 		Background process to rewrite resume using AI.
 
@@ -736,9 +736,9 @@ class AiAgent:
 				FROM job j
 					JOIN job_detail jd ON (j.job_id = jd.job_id)
 					JOIN resume_detail rd ON (j.resume_id = rd.resume_id)
-				WHERE j.job_id = :job_id
+				WHERE j.job_id = :job_id AND j.user_id = :user_id
 			""")
-			result = db.execute(query, {"job_id": job_id}).first()
+			result = db.execute(query, {"job_id": job_id, "user_id": user_id}).first()
 
 			if not result:
 				logger.error(f"Job posting resume not found", job_id=job_id, process_id=process_id)
@@ -790,8 +790,8 @@ class AiAgent:
 						rewrite_score=rewrite_score, process_id=process_id)
 
 			# Step 5: Write HTML content to disk
-			file_name_query = text("SELECT file_name FROM resume WHERE resume_id = :resume_id")
-			file_name_result = db.execute(file_name_query, {"resume_id": result.resume_id}).first()
+			file_name_query = text("SELECT file_name FROM resume WHERE resume_id = :resume_id AND user_id = :user_id")
+			file_name_result = db.execute(file_name_query, {"resume_id": result.resume_id, "user_id": user_id}).first()
 
 			if file_name_result and file_name_result.file_name:
 				try:

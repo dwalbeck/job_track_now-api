@@ -2,6 +2,12 @@ import pytest
 from sqlalchemy import text
 
 
+# Helper to get test user ID
+def get_test_user_id(test_db):
+    result = test_db.execute(text("SELECT user_id FROM users WHERE login = 'testuser'")).first()
+    return result.user_id if result else 1
+
+
 class TestCreateCompany:
     """Test suite for POST /v1/company endpoint."""
 
@@ -52,11 +58,12 @@ class TestCreateCompany:
 
     def test_create_company_with_job_id(self, client, test_db):
         """Test creating a company linked to a job."""
+        user_id = get_test_user_id(test_db)
         # Create test job
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.commit()
 
         company_data = {
@@ -104,11 +111,12 @@ class TestUpdateCompany:
 
     def test_update_company_basic(self, client, test_db):
         """Test updating basic company fields."""
+        user_id = get_test_user_id(test_db)
         # Create initial company
         test_db.execute(text("""
-            INSERT INTO company (company_id, company_name, website_url, hq_city)
-            VALUES (1, 'Old Name', 'https://old.com', 'Old City')
-        """))
+            INSERT INTO company (company_id, user_id, company_name, website_url, hq_city)
+            VALUES (1, :user_id, 'Old Name', 'https://old.com', 'Old City')
+        """), {"user_id": user_id})
         test_db.commit()
 
         update_data = {
@@ -131,11 +139,12 @@ class TestUpdateCompany:
 
     def test_update_company_partial(self, client, test_db):
         """Test updating only some fields."""
+        user_id = get_test_user_id(test_db)
         # Create initial company
         test_db.execute(text("""
-            INSERT INTO company (company_id, company_name, website_url, hq_city, industry)
-            VALUES (1, 'Tech Corp', 'https://tech.com', 'Austin', 'Technology')
-        """))
+            INSERT INTO company (company_id, user_id, company_name, website_url, hq_city, industry)
+            VALUES (1, :user_id, 'Tech Corp', 'https://tech.com', 'Austin', 'Technology')
+        """), {"user_id": user_id})
         test_db.commit()
 
         update_data = {
@@ -157,11 +166,12 @@ class TestUpdateCompany:
 
     def test_update_company_logo_and_report(self, client, test_db):
         """Test updating logo_file and report_html fields."""
+        user_id = get_test_user_id(test_db)
         # Create initial company
         test_db.execute(text("""
-            INSERT INTO company (company_id, company_name)
-            VALUES (1, 'Report Co')
-        """))
+            INSERT INTO company (company_id, user_id, company_name)
+            VALUES (1, :user_id, 'Report Co')
+        """), {"user_id": user_id})
         test_db.commit()
 
         update_data = {
@@ -181,15 +191,16 @@ class TestUpdateCompany:
 
     def test_update_company_with_job_id(self, client, test_db):
         """Test updating company with job_id."""
+        user_id = get_test_user_id(test_db)
         # Create test job and company
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO company (company_id, company_name)
-            VALUES (1, 'Test Co')
-        """))
+            INSERT INTO company (company_id, user_id, company_name)
+            VALUES (1, :user_id, 'Test Co')
+        """), {"user_id": user_id})
         test_db.commit()
 
         update_data = {
@@ -219,11 +230,12 @@ class TestUpdateCompany:
 
     def test_update_company_with_invalid_job_id(self, client, test_db):
         """Test updating company with non-existent job_id fails."""
+        user_id = get_test_user_id(test_db)
         # Create company
         test_db.execute(text("""
-            INSERT INTO company (company_id, company_name)
-            VALUES (1, 'Test Co')
-        """))
+            INSERT INTO company (company_id, user_id, company_name)
+            VALUES (1, :user_id, 'Test Co')
+        """), {"user_id": user_id})
         test_db.commit()
 
         update_data = {
@@ -252,11 +264,12 @@ class TestGetCompany:
 
     def test_get_company_success(self, client, test_db):
         """Test retrieving a company by ID."""
+        user_id = get_test_user_id(test_db)
         # Create company
         test_db.execute(text("""
-            INSERT INTO company (company_id, company_name, website_url, hq_city, hq_state, industry, linkedin_url)
-            VALUES (1, 'Acme Inc', 'https://acme.com', 'San Francisco', 'CA', 'Technology', 'https://linkedin.com/company/acme')
-        """))
+            INSERT INTO company (company_id, user_id, company_name, website_url, hq_city, hq_state, industry, linkedin_url)
+            VALUES (1, :user_id, 'Acme Inc', 'https://acme.com', 'San Francisco', 'CA', 'Technology', 'https://linkedin.com/company/acme')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/company/1")
@@ -276,11 +289,12 @@ class TestGetCompany:
 
     def test_get_company_with_optional_fields(self, client, test_db):
         """Test retrieving company with logo and report."""
+        user_id = get_test_user_id(test_db)
         # Create company with all fields
         test_db.execute(text("""
-            INSERT INTO company (company_id, company_name, website_url, logo_file, report_html, report_created)
-            VALUES (1, 'Report Co', 'https://report.com', 'logo.png', '<html>Report</html>', CURRENT_TIMESTAMP)
-        """))
+            INSERT INTO company (company_id, user_id, company_name, website_url, logo_file, report_html, report_created)
+            VALUES (1, :user_id, 'Report Co', 'https://report.com', 'logo.png', '<html>Report</html>', CURRENT_TIMESTAMP)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/company/1")
@@ -295,15 +309,16 @@ class TestGetCompany:
 
     def test_get_company_with_job_link(self, client, test_db):
         """Test retrieving company linked to a job."""
+        user_id = get_test_user_id(test_db)
         # Create job and company
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO company (company_id, company_name, job_id)
-            VALUES (1, 'Test Co', 1)
-        """))
+            INSERT INTO company (company_id, user_id, company_name, job_id)
+            VALUES (1, :user_id, 'Test Co', 1)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/company/1")
@@ -323,11 +338,12 @@ class TestGetCompany:
 
     def test_get_company_minimal_data(self, client, test_db):
         """Test retrieving company with only required field."""
+        user_id = get_test_user_id(test_db)
         # Create company with minimal data
         test_db.execute(text("""
-            INSERT INTO company (company_id, company_name)
-            VALUES (1, 'Minimal Co')
-        """))
+            INSERT INTO company (company_id, user_id, company_name)
+            VALUES (1, :user_id, 'Minimal Co')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/company/1")
@@ -352,14 +368,15 @@ class TestGetCompanyList:
 
     def test_get_company_list_success(self, client, test_db):
         """Test retrieving list of active companies."""
+        user_id = get_test_user_id(test_db)
         # Create companies with report_active=true
         test_db.execute(text("""
-            INSERT INTO company (company_id, company_name, website_url, hq_city, hq_state, industry, report_active)
+            INSERT INTO company (company_id, user_id, company_name, website_url, hq_city, hq_state, industry, report_active)
             VALUES
-                (1, 'Alpha Corp', 'https://alpha.com', 'Austin', 'TX', 'Technology', true),
-                (2, 'Beta Inc', 'https://beta.com', 'Boston', 'MA', 'Finance', true),
-                (3, 'Inactive Co', 'https://inactive.com', 'Portland', 'OR', 'Retail', false)
-        """))
+                (1, :user_id, 'Alpha Corp', 'https://alpha.com', 'Austin', 'TX', 'Technology', true),
+                (2, :user_id, 'Beta Inc', 'https://beta.com', 'Boston', 'MA', 'Finance', true),
+                (3, :user_id, 'Inactive Co', 'https://inactive.com', 'Portland', 'OR', 'Retail', false)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/company/list")
@@ -373,14 +390,15 @@ class TestGetCompanyList:
 
     def test_get_company_list_ordered_by_name(self, client, test_db):
         """Test that companies are ordered by name."""
+        user_id = get_test_user_id(test_db)
         # Create companies in non-alphabetical order
         test_db.execute(text("""
-            INSERT INTO company (company_id, company_name, report_active)
+            INSERT INTO company (company_id, user_id, company_name, report_active)
             VALUES
-                (1, 'Zebra Corp', true),
-                (2, 'Apple Inc', true),
-                (3, 'Microsoft', true)
-        """))
+                (1, :user_id, 'Zebra Corp', true),
+                (2, :user_id, 'Apple Inc', true),
+                (3, :user_id, 'Microsoft', true)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/company/list")
@@ -395,18 +413,19 @@ class TestGetCompanyList:
 
     def test_get_company_list_includes_all_fields(self, client, test_db):
         """Test that response includes all company fields."""
+        user_id = get_test_user_id(test_db)
         test_db.execute(text("""
             INSERT INTO company (
-                company_id, company_name, website_url, hq_city, hq_state,
+                company_id, user_id, company_name, website_url, hq_city, hq_state,
                 industry, logo_file, linkedin_url, job_id, report_html,
                 report_created, report_active
             )
             VALUES (
-                1, 'Full Data Corp', 'https://full.com', 'Denver', 'CO',
+                1, :user_id, 'Full Data Corp', 'https://full.com', 'Denver', 'CO',
                 'Technology', 'logo.png', 'https://linkedin.com/company/full',
                 NULL, '<html>Report</html>', CURRENT_TIMESTAMP, true
             )
-        """))
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/company/list")
@@ -440,11 +459,12 @@ class TestDeleteCompany:
 
     def test_delete_company_success(self, client, test_db):
         """Test soft deleting a company."""
+        user_id = get_test_user_id(test_db)
         # Create company
         test_db.execute(text("""
-            INSERT INTO company (company_id, company_name, report_active)
-            VALUES (1, 'Delete Me', true)
-        """))
+            INSERT INTO company (company_id, user_id, company_name, report_active)
+            VALUES (1, :user_id, 'Delete Me', true)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.delete("/v1/company/1")
@@ -467,13 +487,14 @@ class TestDeleteCompany:
 
     def test_delete_company_preserves_data(self, client, test_db):
         """Test that deletion only sets report_active to false."""
+        user_id = get_test_user_id(test_db)
         # Create company with data
         test_db.execute(text("""
             INSERT INTO company (
-                company_id, company_name, website_url, report_html, report_active
+                company_id, user_id, company_name, website_url, report_html, report_active
             )
-            VALUES (1, 'Preserve Me', 'https://preserve.com', '<html>Report</html>', true)
-        """))
+            VALUES (1, :user_id, 'Preserve Me', 'https://preserve.com', '<html>Report</html>', true)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.delete("/v1/company/1")
@@ -500,11 +521,12 @@ class TestDownloadCompanyReport:
         os.makedirs(test_report_dir, exist_ok=True)
         monkeypatch.setattr(config.settings, 'report_dir', test_report_dir)
 
+        user_id = get_test_user_id(test_db)
         # Create company with report
         test_db.execute(text("""
-            INSERT INTO company (company_id, company_name, report_html)
-            VALUES (1, 'Test Company', '<html><body>Test Report</body></html>')
-        """))
+            INSERT INTO company (company_id, user_id, company_name, report_html)
+            VALUES (1, :user_id, 'Test Company', '<html><body>Test Report</body></html>')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/company/download/1")
@@ -527,11 +549,12 @@ class TestDownloadCompanyReport:
 
     def test_download_company_report_no_html(self, client, test_db):
         """Test downloading report when no report_html exists."""
+        user_id = get_test_user_id(test_db)
         # Create company without report
         test_db.execute(text("""
-            INSERT INTO company (company_id, company_name)
-            VALUES (1, 'No Report Co')
-        """))
+            INSERT INTO company (company_id, user_id, company_name)
+            VALUES (1, :user_id, 'No Report Co')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/company/download/1")
@@ -548,11 +571,12 @@ class TestDownloadCompanyReport:
         os.makedirs(test_report_dir, exist_ok=True)
         monkeypatch.setattr(config.settings, 'report_dir', test_report_dir)
 
+        user_id = get_test_user_id(test_db)
         # Create company with special characters in name
         test_db.execute(text("""
-            INSERT INTO company (company_id, company_name, report_html)
-            VALUES (1, 'Company & Co. (LLC)!', '<html><body>Test</body></html>')
-        """))
+            INSERT INTO company (company_id, user_id, company_name, report_html)
+            VALUES (1, :user_id, 'Company & Co. (LLC)!', '<html><body>Test</body></html>')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/company/download/1")

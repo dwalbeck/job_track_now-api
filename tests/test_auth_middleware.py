@@ -186,7 +186,7 @@ class TestTokenClaims:
         assert "aud" in payload
         assert "iat" in payload
         assert "exp" in payload
-        assert "nbf" in payload
+        # Note: nbf (not before) was removed due to time sync issues between containers
         assert "jti" in payload
 
         # Check custom claims

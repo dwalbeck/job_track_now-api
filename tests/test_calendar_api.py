@@ -4,16 +4,23 @@ from sqlalchemy import text
 from datetime import date
 
 
+# Helper to get test user ID
+def get_test_user_id(test_db):
+    result = test_db.execute(text("SELECT user_id FROM users WHERE login = 'testuser'")).first()
+    return result.user_id if result else 1
+
+
 class TestGetJobAppointments:
     """Test suite for GET /v1/calendar/appt endpoint."""
 
     def test_get_job_appointments_empty(self, client, test_db):
         """Test getting appointments when none exist."""
+        user_id = get_test_user_id(test_db)
         # Create test job
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/calendar/appt?job_id=1")
@@ -23,17 +30,18 @@ class TestGetJobAppointments:
 
     def test_get_job_appointments_multiple(self, client, test_db):
         """Test getting multiple appointments for a job."""
+        user_id = get_test_user_id(test_db)
         # Create test job
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO calendar (calendar_id, job_id, calendar_type, start_date, start_time, end_date, end_time, participant, calendar_desc, outcome_score)
+            INSERT INTO calendar (calendar_id, user_id, job_id, calendar_type, start_date, start_time, end_date, end_time, participant, calendar_desc, outcome_score)
             VALUES
-                (1, 1, 'phone call', '2025-01-15', '10:00:00', '2025-01-15', '10:30:00', ARRAY['John Doe'], 'Phone screening', 8),
-                (2, 1, 'interview', '2025-01-20', '14:00:00', '2025-01-20', '15:00:00', ARRAY['Jane Smith', 'Bob Jones'], 'Technical interview', 9)
-        """))
+                (1, :user_id, 1, 'phone call', '2025-01-15', '10:00:00', '2025-01-15', '10:30:00', ARRAY['John Doe'], 'Phone screening', 8),
+                (2, :user_id, 1, 'interview', '2025-01-20', '14:00:00', '2025-01-20', '15:00:00', ARRAY['Jane Smith', 'Bob Jones'], 'Technical interview', 9)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/calendar/appt?job_id=1")
@@ -53,18 +61,19 @@ class TestGetMonthCalendar:
 
     def test_get_month_calendar_success(self, client, test_db):
         """Test getting calendar for a specific month."""
+        user_id = get_test_user_id(test_db)
         # Create test job and calendar entries
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Company A', 'Engineer', 'applied', true, 'company_a_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Company A', 'Engineer', 'applied', true, 'company_a_engineer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO calendar (calendar_id, job_id, calendar_type, start_date, start_time)
+            INSERT INTO calendar (calendar_id, user_id, job_id, calendar_type, start_date, start_time)
             VALUES
-                (1, 1, 'phone call', '2025-01-15', '10:00:00'),
-                (2, 1, 'interview', '2025-01-20', '14:00:00'),
-                (3, 1, 'interview', '2025-02-05', '11:00:00')
-        """))
+                (1, :user_id, 1, 'phone call', '2025-01-15', '10:00:00'),
+                (2, :user_id, 1, 'interview', '2025-01-20', '14:00:00'),
+                (3, :user_id, 1, 'interview', '2025-02-05', '11:00:00')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/calendar/month?date=2025-01")
@@ -79,19 +88,20 @@ class TestGetMonthCalendar:
 
     def test_get_month_calendar_filtered_by_job(self, client, test_db):
         """Test getting month calendar filtered by job_id."""
+        user_id = get_test_user_id(test_db)
         # Create test jobs and calendar entries
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
             VALUES
-                (1, 'Company A', 'Engineer', 'applied', true, 'company_a_engineer'),
-                (2, 'Company B', 'Developer', 'applied', true, 'company_b_developer')
-        """))
+                (1, :user_id, 'Company A', 'Engineer', 'applied', true, 'company_a_engineer'),
+                (2, :user_id, 'Company B', 'Developer', 'applied', true, 'company_b_developer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO calendar (calendar_id, job_id, calendar_type, start_date, start_time)
+            INSERT INTO calendar (calendar_id, user_id, job_id, calendar_type, start_date, start_time)
             VALUES
-                (1, 1, 'phone call', '2025-01-15', '10:00:00'),
-                (2, 2, 'interview', '2025-01-20', '14:00:00')
-        """))
+                (1, :user_id, 1, 'phone call', '2025-01-15', '10:00:00'),
+                (2, :user_id, 2, 'interview', '2025-01-20', '14:00:00')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/calendar/month?date=2025-01&job_id=1")
@@ -116,18 +126,19 @@ class TestGetWeekCalendar:
 
     def test_get_week_calendar_success(self, client, test_db):
         """Test getting calendar for a specific week."""
+        user_id = get_test_user_id(test_db)
         # Create test job and calendar entries (2025-01-13 is a Monday)
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO calendar (calendar_id, job_id, calendar_type, start_date, start_time)
+            INSERT INTO calendar (calendar_id, user_id, job_id, calendar_type, start_date, start_time)
             VALUES
-                (1, 1, 'phone call', '2025-01-13', '10:00:00'),
-                (2, 1, 'interview', '2025-01-15', '14:00:00'),
-                (3, 1, 'interview', '2025-01-20', '11:00:00')
-        """))
+                (1, :user_id, 1, 'phone call', '2025-01-13', '10:00:00'),
+                (2, :user_id, 1, 'interview', '2025-01-15', '14:00:00'),
+                (3, :user_id, 1, 'interview', '2025-01-20', '11:00:00')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/calendar/week?date=2025-01-13")
@@ -154,18 +165,19 @@ class TestGetDayCalendar:
 
     def test_get_day_calendar_success(self, client, test_db):
         """Test getting calendar for a specific day."""
+        user_id = get_test_user_id(test_db)
         # Create test job and calendar entries
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO calendar (calendar_id, job_id, calendar_type, start_date, start_time)
+            INSERT INTO calendar (calendar_id, user_id, job_id, calendar_type, start_date, start_time)
             VALUES
-                (1, 1, 'phone call', '2025-01-15', '10:00:00'),
-                (2, 1, 'interview', '2025-01-15', '14:00:00'),
-                (3, 1, 'interview', '2025-01-16', '11:00:00')
-        """))
+                (1, :user_id, 1, 'phone call', '2025-01-15', '10:00:00'),
+                (2, :user_id, 1, 'interview', '2025-01-15', '14:00:00'),
+                (3, :user_id, 1, 'interview', '2025-01-16', '11:00:00')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/calendar/day?date=2025-01-15")
@@ -178,10 +190,11 @@ class TestGetDayCalendar:
 
     def test_get_day_calendar_empty(self, client, test_db):
         """Test getting calendar for a day with no events."""
+        user_id = get_test_user_id(test_db)
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/calendar/day?date=2025-01-15")
@@ -197,11 +210,12 @@ class TestCreateOrUpdateCalendar:
     @patch('app.api.calendar.calc_avg_score')
     def test_create_calendar_event(self, mock_calc_avg, mock_update_activity, client, test_db):
         """Test creating a new calendar event."""
+        user_id = get_test_user_id(test_db)
         # Create test job
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.commit()
 
         calendar_data = {
@@ -236,15 +250,16 @@ class TestCreateOrUpdateCalendar:
     @patch('app.api.calendar.calc_avg_score')
     def test_update_calendar_event(self, mock_calc_avg, mock_update_activity, client, test_db):
         """Test updating an existing calendar event."""
+        user_id = get_test_user_id(test_db)
         # Create test job and calendar event
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO calendar (calendar_id, job_id, calendar_type, start_date, start_time, outcome_score)
-            VALUES (1, 1, 'phone call', '2025-01-15', '10:00:00', 5)
-        """))
+            INSERT INTO calendar (calendar_id, user_id, job_id, calendar_type, start_date, start_time, outcome_score)
+            VALUES (1, :user_id, 1, 'phone call', '2025-01-15', '10:00:00', 5)
+        """), {"user_id": user_id})
         test_db.commit()
 
         update_data = {
@@ -295,10 +310,11 @@ class TestCreateOrUpdateCalendar:
 
     def test_update_calendar_event_not_found(self, client, test_db):
         """Test updating non-existent calendar event."""
+        user_id = get_test_user_id(test_db)
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.commit()
 
         update_data = {
@@ -318,15 +334,16 @@ class TestGetCalendarEvent:
 
     def test_get_calendar_event_success(self, client, test_db):
         """Test getting a calendar event by ID."""
+        user_id = get_test_user_id(test_db)
         # Create test job and calendar event
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Tech Corp', 'Engineer', 'applied', true, 'tech_corp_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Tech Corp', 'Engineer', 'applied', true, 'tech_corp_engineer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO calendar (calendar_id, job_id, calendar_type, start_date, start_time, end_date, end_time, participant, calendar_desc, outcome_score)
-            VALUES (1, 1, 'interview', '2025-01-15', '10:00:00', '2025-01-15', '11:00:00', ARRAY['John Doe'], 'Technical interview', 9)
-        """))
+            INSERT INTO calendar (calendar_id, user_id, job_id, calendar_type, start_date, start_time, end_date, end_time, participant, calendar_desc, outcome_score)
+            VALUES (1, :user_id, 1, 'interview', '2025-01-15', '10:00:00', '2025-01-15', '11:00:00', ARRAY['John Doe'], 'Technical interview', 9)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/calendar/1")
@@ -355,15 +372,16 @@ class TestDeleteCalendarAppointment:
     @patch('app.api.calendar.calc_avg_score')
     def test_delete_calendar_appointment_success(self, mock_calc_avg, client, test_db):
         """Test successfully deleting a calendar appointment."""
+        user_id = get_test_user_id(test_db)
         # Create test job and calendar event
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Engineer', 'applied', true, 'test_co_engineer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
-            INSERT INTO calendar (calendar_id, job_id, calendar_type, start_date, start_time)
-            VALUES (1, 1, 'phone call', '2025-01-15', '10:00:00')
-        """))
+            INSERT INTO calendar (calendar_id, user_id, job_id, calendar_type, start_date, start_time)
+            VALUES (1, :user_id, 1, 'phone call', '2025-01-15', '10:00:00')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.delete("/v1/calendar/appt?appointment_id=1")

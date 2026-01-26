@@ -214,6 +214,8 @@ class Note(Base):
     note_content = Column(Text)
     note_active = Column(Boolean, default=True)
     note_created = Column(DateTime(timezone=False), server_default=func.current_timestamp())
+    note_score = Column(SmallInteger, nullable=True)
+    communication_type = Column(String(20), nullable=True)
 
     # Relationships
     user = relationship("User", backref="notes")
@@ -374,6 +376,7 @@ class Process(Base):
 	completed = Column(DateTime(timezone=False))
 	confirmed = Column(Boolean, default=False, nullable=False)
 	failed = Column(Boolean, default=False, nullable=False)
+	user_id = Column(Integer)
 
 
 class Company(Base):

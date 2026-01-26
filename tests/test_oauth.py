@@ -13,8 +13,7 @@ from app.utils.oauth_utils import (
     mark_authorization_code_used,
     verify_pkce_challenge,
     create_access_token,
-    verify_access_token,
-    _auth_codes
+    verify_access_token
 )
 
 
@@ -65,8 +64,9 @@ def setup_test_user(test_db):
         """), {"user_id": user_id})
     test_db.commit()
     yield
-    # Cleanup in-memory auth codes after each test
-    _auth_codes.clear()
+    # Cleanup auth codes from database after each test
+    test_db.execute(text("DELETE FROM oauth_codes"))
+    test_db.commit()
 
 
 class TestOAuthUtils:
@@ -100,7 +100,9 @@ class TestOAuthUtils:
             code_challenge=code_challenge,
             code_challenge_method=code_challenge_method,
             state=state,
-            scope=scope
+            scope=scope,
+            user_id=1,
+            is_admin=False
         )
 
         # Retrieve code
@@ -127,7 +129,9 @@ class TestOAuthUtils:
             code_challenge="challenge",
             code_challenge_method="S256",
             state="state",
-            scope="all"
+            scope="all",
+            user_id=1,
+            is_admin=False
         )
 
         # Mark as used

@@ -4,9 +4,14 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from app.main import app
 from app.core.database import get_db
+from app.middleware.auth_middleware import get_current_user
 import tempfile
 import os
 from pathlib import Path
+
+
+# Test user ID that will be used across all tests
+TEST_USER_ID = None
 
 
 # Test database URL - use PostgreSQL to match production
@@ -91,14 +96,29 @@ def test_db(test_engine):
 
 @pytest.fixture(scope="function")
 def client(test_db):
-    """Create a test client with database override."""
+    """Create a test client with database and auth override."""
+    # Get the test user ID
+    user_result = test_db.execute(text("SELECT user_id FROM users WHERE login = 'testuser'")).first()
+    test_user_id = user_result.user_id if user_result else 1
+
     def override_get_db():
         try:
             yield test_db
         finally:
             pass
 
+    def override_get_current_user():
+        """Mock authentication - returns test user payload."""
+        return {
+            "user_id": test_user_id,
+            "sub": "testuser",
+            "preferred_username": "testuser",
+            "is_admin": False,
+            "scope": "all"
+        }
+
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = override_get_current_user
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

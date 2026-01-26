@@ -1309,6 +1309,7 @@ async def get_rewrite_data(
 	Args:
 		job_id: ID of the job
 		db: Database session
+		current_user: User ID pulled from JWT
 
 	Returns:
 		ResumeRewriteResponse with resume data including HTML, suggestions, and scores
@@ -1368,6 +1369,7 @@ async def rewrite_resume(
 		request: ResumeRewriteRequest with job_id
 		background_tasks: FastAPI background tasks
 		db: Database session
+		current_user: User ID from JWT
 
 	Returns:
 		202 Accepted with process_id
@@ -1397,7 +1399,8 @@ async def rewrite_resume(
 		new_process = Process(
 			endpoint_called="/v1/resume/rewrite",
 			running_method="resume_rewrite_process",
-			running_class="AiAgent"
+			running_class="AiAgent",
+			user_id=user_id
 		)
 		db.add(new_process)
 		db.commit()
@@ -1421,16 +1424,18 @@ async def rewrite_resume(
 			# DO NOT use the request-scoped 'db' session
 			thread_db = SessionLocal()
 			try:
+				logger.info(f"Resume rewrite background process started", job_id=request.job_id, process_id=process_id)
 				thread_ai_agent = AiAgent(thread_db)
 				thread_ai_agent.resume_rewrite_process(request.job_id, process_id, thread_user_id)
 			finally:
+				logger.info(f"Closing resume rewrite background thread", job_id=request.job_id, process_id=process_id)
 				thread_db.close()
 
 		# Run in separate thread to avoid blocking the event loop
 		thread = threading.Thread(target=run_rewrite, daemon=True)
 		thread.start()
 
-		logger.info(f"Resume rewrite process started", job_id=request.job_id, process_id=process_id)
+		logger.info(f"Resume rewrite process completed", job_id=request.job_id, process_id=process_id)
 
 		return {"process_id": process_id}
 

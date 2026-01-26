@@ -3,6 +3,12 @@ from unittest.mock import Mock, patch
 from sqlalchemy import text
 
 
+# Helper to get test user ID
+def get_test_user_id(test_db):
+    result = test_db.execute(text("SELECT user_id FROM users WHERE login = 'testuser'")).first()
+    return result.user_id if result else 1
+
+
 class TestGetAllJobs:
     """Test suite for GET /v1/jobs endpoint."""
 
@@ -15,14 +21,15 @@ class TestGetAllJobs:
 
     def test_get_all_jobs_multiple(self, client, test_db):
         """Test retrieving multiple active jobs."""
+        user_id = get_test_user_id(test_db)
         # Create test jobs
         test_db.execute(text("""
-            INSERT INTO job (company, job_title, job_status, job_active, last_activity, job_directory, average_score, interest_level)
+            INSERT INTO job (user_id, company, job_title, job_status, job_active, last_activity, job_directory, average_score, interest_level)
             VALUES
-                ('Google', 'Software Engineer', 'applied', true, '2025-01-10', 'google_software_engineer', 5, 5),
-                ('Microsoft', 'Senior Developer', 'interviewing', true, '2025-01-15', 'microsoft_senior_developer', 5, 5),
-                ('Amazon', 'Tech Lead', 'applied', true, '2025-01-05', 'amazon_tech_lead', 5, 5)
-        """))
+                (:user_id, 'Google', 'Software Engineer', 'applied', true, '2025-01-10', 'google_software_engineer', 5, 5),
+                (:user_id, 'Microsoft', 'Senior Developer', 'interviewing', true, '2025-01-15', 'microsoft_senior_developer', 5, 5),
+                (:user_id, 'Amazon', 'Tech Lead', 'applied', true, '2025-01-05', 'amazon_tech_lead', 5, 5)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/jobs")
@@ -42,13 +49,14 @@ class TestGetAllJobs:
 
     def test_get_all_jobs_excludes_inactive(self, client, test_db):
         """Test that inactive jobs are not returned."""
+        user_id = get_test_user_id(test_db)
         # Create active and inactive jobs
         test_db.execute(text("""
-            INSERT INTO job (company, job_title, job_status, job_active, job_directory, average_score, interest_level)
+            INSERT INTO job (user_id, company, job_title, job_status, job_active, job_directory, average_score, interest_level)
             VALUES
-                ('Active Co', 'Developer', 'applied', true, 'active_co_developer', 5, 5),
-                ('Inactive Co', 'Engineer', 'applied', false, 'inactive_co_engineer', 5, 5)
-        """))
+                (:user_id, 'Active Co', 'Developer', 'applied', true, 'active_co_developer', 5, 5),
+                (:user_id, 'Inactive Co', 'Engineer', 'applied', false, 'inactive_co_engineer', 5, 5)
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/jobs")
@@ -61,20 +69,21 @@ class TestGetAllJobs:
 
     def test_get_all_jobs_with_calendar_appointments(self, client, test_db):
         """Test that jobs include latest calendar appointment data."""
+        user_id = get_test_user_id(test_db)
         # Create test jobs
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, last_activity, job_directory, average_score, interest_level)
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, last_activity, job_directory, average_score, interest_level)
             VALUES
-                (1, 'Job With Appt', 'Engineer', 'interviewing', true, '2025-01-10', 'job_with_appt_engineer', 5, 5),
-                (2, 'Job No Appt', 'Developer', 'applied', true, '2025-01-08', 'job_no_appt_developer', 5, 5)
-        """))
+                (1, :user_id, 'Job With Appt', 'Engineer', 'interviewing', true, '2025-01-10', 'job_with_appt_engineer', 5, 5),
+                (2, :user_id, 'Job No Appt', 'Developer', 'applied', true, '2025-01-08', 'job_no_appt_developer', 5, 5)
+        """), {"user_id": user_id})
         # Create calendar appointments for first job
         test_db.execute(text("""
-            INSERT INTO calendar (job_id, start_date, start_time, calendar_type)
+            INSERT INTO calendar (user_id, job_id, start_date, start_time, calendar_type)
             VALUES
-                (1, '2025-01-05', '10:00:00', 'interview'),
-                (1, '2025-01-20', '14:30:00', 'interview')
-        """))
+                (:user_id, 1, '2025-01-05', '10:00:00', 'interview'),
+                (:user_id, 1, '2025-01-20', '14:30:00', 'interview')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/jobs")
@@ -101,11 +110,12 @@ class TestDeleteJob:
 
     def test_delete_job_success(self, client, test_db):
         """Test successfully deleting a job."""
+        user_id = get_test_user_id(test_db)
         # Create test job
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Test Co', 'Developer', 'applied', true, 'test_co_developer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Test Co', 'Developer', 'applied', true, 'test_co_developer')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.delete("/v1/job/1")
@@ -137,14 +147,15 @@ class TestGetJobList:
 
     def test_get_job_list_multiple(self, client, test_db):
         """Test getting job list with multiple jobs."""
+        user_id = get_test_user_id(test_db)
         # Create test jobs with different dates
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory, last_activity, date_applied)
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory, last_activity, date_applied)
             VALUES
-                (1, 'Apple', 'iOS Developer', 'applied', true, 'apple_ios_developer', '2025-01-10', '2025-01-10'),
-                (2, 'Facebook', 'Backend Engineer', 'interviewing', true, 'facebook_backend_engineer', '2025-01-15', '2025-01-14'),
-                (3, 'Netflix', 'DevOps Engineer', 'applied', true, 'netflix_devops_engineer', '2025-01-05', '2025-01-05')
-        """))
+                (1, :user_id, 'Apple', 'iOS Developer', 'applied', true, 'apple_ios_developer', '2025-01-10', '2025-01-10'),
+                (2, :user_id, 'Facebook', 'Backend Engineer', 'interviewing', true, 'facebook_backend_engineer', '2025-01-15', '2025-01-14'),
+                (3, :user_id, 'Netflix', 'DevOps Engineer', 'applied', true, 'netflix_devops_engineer', '2025-01-05', '2025-01-05')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/job/list")
@@ -160,12 +171,13 @@ class TestGetJobList:
 
     def test_get_job_list_excludes_inactive(self, client, test_db):
         """Test that job list excludes inactive jobs."""
+        user_id = get_test_user_id(test_db)
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
             VALUES
-                (1, 'Active Corp', 'Developer', 'applied', true, 'active_corp_developer'),
-                (2, 'Deleted Corp', 'Engineer', 'rejected', false, 'deleted_corp_engineer')
-        """))
+                (1, :user_id, 'Active Corp', 'Developer', 'applied', true, 'active_corp_developer'),
+                (2, :user_id, 'Deleted Corp', 'Engineer', 'rejected', false, 'deleted_corp_engineer')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/job/list")
@@ -182,13 +194,14 @@ class TestGetJob:
 
     def test_get_job_success(self, client, test_db):
         """Test getting a job by ID."""
+        user_id = get_test_user_id(test_db)
         # Create test job
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_url, interest_level,
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_url, interest_level,
                            location, salary_min, salary_max, job_active, job_directory)
-            VALUES (1, 'Tesla', 'Software Engineer', 'applied', 'https://tesla.com/jobs/123',
+            VALUES (1, :user_id, 'Tesla', 'Software Engineer', 'applied', 'https://tesla.com/jobs/123',
                    8, 'Palo Alto, CA', 150000, 200000, true, 'tesla_software_engineer')
-        """))
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO job_detail (job_id, job_desc, job_qualification, job_keyword)
             VALUES (1, 'Build amazing software', 'BS in CS required', ARRAY['Python', 'React'])
@@ -222,10 +235,11 @@ class TestGetJob:
 
     def test_get_job_inactive_not_found(self, client, test_db):
         """Test that inactive jobs return 404."""
+        user_id = get_test_user_id(test_db)
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Inactive Co', 'Developer', 'rejected', false, 'inactive_co_developer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Inactive Co', 'Developer', 'rejected', false, 'inactive_co_developer')
+        """), {"user_id": user_id})
         test_db.commit()
 
         response = client.get("/v1/job/1")
@@ -277,12 +291,13 @@ class TestCreateOrUpdateJob:
     def test_update_job_success(self, mock_calc_avg, client, test_db):
         """Test updating an existing job."""
         mock_calc_avg.return_value = None
+        user_id = get_test_user_id(test_db)
 
         # Create initial job
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Old Company', 'Old Title', 'applied', true, 'old_company_old_title')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Old Company', 'Old Title', 'applied', true, 'old_company_old_title')
+        """), {"user_id": user_id})
         test_db.commit()
 
         update_data = {
@@ -338,11 +353,12 @@ class TestExtractJobData:
     @patch('app.utils.ai_agent.AiAgent.job_extraction')
     def test_extract_job_data_success(self, mock_extraction, client, test_db):
         """Test successful job data extraction."""
+        user_id = get_test_user_id(test_db)
         # Create test job with description
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Airbnb', 'Backend Engineer', 'applied', true, 'airbnb_backend_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Airbnb', 'Backend Engineer', 'applied', true, 'airbnb_backend_engineer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO job_detail (job_id, job_desc)
             VALUES (1, 'We are looking for a backend engineer with Python and AWS experience.')
@@ -365,11 +381,12 @@ class TestExtractJobData:
 
     def test_extract_job_data_cached(self, client, test_db):
         """Test extraction returns cached data if already extracted."""
+        user_id = get_test_user_id(test_db)
         # Create job with existing qualification and keywords
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Cached Co', 'Engineer', 'applied', true, 'cached_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Cached Co', 'Engineer', 'applied', true, 'cached_co_engineer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO job_detail (job_id, job_desc, job_qualification, job_keyword)
             VALUES (1, 'Description', 'Cached qualification', ARRAY['Cached', 'Keywords'])
@@ -397,11 +414,12 @@ class TestCreateOrUpdateJobDetail:
 
     def test_create_job_detail_success(self, client, test_db):
         """Test creating job detail."""
+        user_id = get_test_user_id(test_db)
         # Create test job
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Detail Co', 'Engineer', 'applied', true, 'detail_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Detail Co', 'Engineer', 'applied', true, 'detail_co_engineer')
+        """), {"user_id": user_id})
         test_db.commit()
 
         detail_data = {
@@ -426,11 +444,12 @@ class TestCreateOrUpdateJobDetail:
 
     def test_update_job_detail_success(self, client, test_db):
         """Test updating existing job detail."""
+        user_id = get_test_user_id(test_db)
         # Create job and detail
         test_db.execute(text("""
-            INSERT INTO job (job_id, company, job_title, job_status, job_active, job_directory)
-            VALUES (1, 'Update Co', 'Engineer', 'applied', true, 'update_co_engineer')
-        """))
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory)
+            VALUES (1, :user_id, 'Update Co', 'Engineer', 'applied', true, 'update_co_engineer')
+        """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO job_detail (job_id, job_desc, job_qualification)
             VALUES (1, 'Old description', 'Old qualification')
