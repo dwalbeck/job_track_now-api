@@ -177,7 +177,7 @@ class AiAgent:
 
 			raise ValueError(f"Failed to parse AI response as JSON: {str(e)}")
 
-	def job_extraction(self, job_id: int) -> dict:
+	def job_extraction(self, job_id: int, user_id: int) -> dict:
 		"""
 		Extract job qualifications and keywords from a job description using AI.
 
@@ -193,8 +193,8 @@ class AiAgent:
 			ValueError: If job not found or job_desc is empty
 		"""
 		# First verify the job exists
-		job_query = text("SELECT job_id FROM job WHERE job_id = :job_id AND job_active = true")
-		job_result = self.db.execute(job_query, {"job_id": job_id}).first()
+		job_query = text("SELECT job_id FROM job WHERE job_id = :job_id AND job_active = true AND user_id = :user_id")
+		job_result = self.db.execute(job_query, {"job_id": job_id, "user_id": user_id}).first()
 
 		if not job_result:
 			raise ValueError(f"Job not found or inactive for job_id: {job_id}")

@@ -7,6 +7,8 @@ class NoteBase(BaseModel):
     job_id: int
     note_title: Optional[str] = None
     note_content: Optional[str] = None
+    note_score: Optional[int] = None
+    communication_type: Optional[str] = None
 
 
 class NoteCreate(NoteBase):
@@ -18,8 +20,10 @@ class NoteUpdate(BaseModel):
     job_id: Optional[int] = None
     note_title: Optional[str] = None
     note_content: Optional[str] = None
+    note_score: Optional[int] = None
+    communication_type: Optional[str] = None
 
-    @field_validator('note_id', 'job_id', mode='before')
+    @field_validator('note_id', 'job_id', 'note_score', mode='before')
     @classmethod
     def empty_str_to_none(cls, v):
         if v == '':

@@ -46,6 +46,8 @@ async def get_notes(
             job_id=row.job_id,
             note_title=row.note_title,
             note_content=row.note_content,
+            note_score=row.note_score,
+            communication_type=row.communication_type,
             note_created=row.note_created,
             job_title=row.job_title,
             company=row.company
@@ -85,13 +87,13 @@ async def _create_or_update_note(note_data: NoteUpdate, db: Session, user_id: in
             raise HTTPException(status_code=404, detail="Note not found")
 
         # Update fields that are provided
-        update_data = note_data.dict(exclude_unset=True, exclude={'note_id'})
+        update_data = note_data.model_dump(exclude_unset=True, exclude={'note_id'})
         for field, value in update_data.items():
             setattr(note, field, value)
 
     else:
         # Create new note
-        note_dict = note_data.dict(exclude={'note_id'}, exclude_unset=True)
+        note_dict = note_data.model_dump(exclude={'note_id'}, exclude_unset=True)
         note_dict['user_id'] = user_id
         note = Note(**note_dict)
         db.add(note)

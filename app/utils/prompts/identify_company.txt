@@ -53,7 +53,10 @@ JOB POSTING:
     - The company logo is generally also surrounded by an anchor link that points to the website main page
     - Do not use sources that are not directly owned and operated by any entity other than the company being searched
     - It is possible that the company logo is simply text of their company name, which even in this case, will generally still use a graphic image for it
-    - The company logo can often be found by searching for the text "logo" (case-insensitive) matched within an IMG tag within the SRC attribute of the homepage source code   
+    - The company logo can often be found by searching for the text "logo" (case-insensitive) matched within an element in the class name or any other attribute
+    - The value for the return variable "company_logo_url" should be valid URL that will directly access the company logo to be downloaded
+    - The value for the return variable "logo_element" should contain the HTML element that the logo was grabbed from
+    - The value for the return variable "logo_element2" should contain the HTML element one higher than the logo element and everything it contains
     - Logo verification steps:
         * Execute "curl -I <logo_url>" and verify it returns "HTTP/2 200". This verifies that it is publically accessible.  Fail anything other than a 200 response
         * Execute "curl -LO <logo_url>", which will verify that it can be downloaded, and do the next step using the downloaded file. Fail non-image & zero byte size files
@@ -121,7 +124,9 @@ Pulled from source code:
         "linkedin_url": "",
         "industry": "",
         "match_score": "",
-        "company_logo_url": ""
+        "company_logo_url": "",
+        "logo_element": "",
+        "logo_element2": ""
     }
     ...
 ]
