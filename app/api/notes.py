@@ -17,12 +17,11 @@ router = APIRouter()
 async def get_notes(
     job_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Get all notes, optionally filtered by job_id.
     """
-    user_id = current_user.get("user_id")
     query = """
         SELECT n.*, j.company, j.job_title
         FROM note n
@@ -115,12 +114,12 @@ async def _create_or_update_note(note_data: NoteUpdate, db: Session, user_id: in
 async def create_or_update_note(
     note_data: NoteUpdate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Create a new note or update an existing one.
     """
-    user_id = current_user.get("user_id")
+
     return await _create_or_update_note(note_data, db, user_id)
 
 
@@ -128,12 +127,11 @@ async def create_or_update_note(
 async def create_or_update_note_plural(
     note_data: NoteUpdate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Create a new note or update an existing one (plural route for compatibility).
     """
-    user_id = current_user.get("user_id")
     return await _create_or_update_note(note_data, db, user_id)
 
 
@@ -141,12 +139,11 @@ async def create_or_update_note_plural(
 async def delete_note(
     note_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Soft delete a note by setting note_active to false.
     """
-    user_id = current_user.get("user_id")
     note = db.query(Note).filter(
         Note.note_id == note_id,
         Note.user_id == user_id

@@ -16,7 +16,7 @@ router = APIRouter()
 async def create_or_update_reminder(
     reminder: ReminderCreate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Create or update a reminder.
@@ -31,7 +31,7 @@ async def create_or_update_reminder(
     Returns:
         Success status with HTTP 200
     """
-    user_id = current_user.get("user_id")
+
     try:
         if reminder.reminder_id:
             # Update existing reminder - ensure user owns it
@@ -118,7 +118,7 @@ async def create_or_update_reminder(
 async def delete_reminder(
     reminder_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Delete a reminder by ID.
@@ -130,7 +130,7 @@ async def delete_reminder(
     Returns:
         Success status with HTTP 200
     """
-    user_id = current_user.get("user_id")
+
     try:
         logger.info(f"Deleting reminder", reminder_id=reminder_id, user_id=user_id)
 
@@ -163,7 +163,7 @@ async def delete_reminder(
 async def list_reminders(
     request: ReminderListRequest,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Get a list of reminders based on duration and optional job_id filter.
@@ -180,7 +180,7 @@ async def list_reminders(
     Returns:
         List of reminders matching the criteria
     """
-    user_id = current_user.get("user_id")
+
     try:
         logger.info(f"Listing reminders", duration=request.duration, start_date=request.start_date, job_id=request.job_id, user_id=user_id)
 

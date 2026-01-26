@@ -160,7 +160,7 @@ class Html2DocxResponse(BaseModel):
 async def convert_html_to_docx(
     job_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Performs the conversion from HTML to DOCX and returns the new filename.
@@ -173,7 +173,6 @@ async def convert_html_to_docx(
     Returns:
     - file_name: Name of the generated DOCX file
     """
-    user_id = current_user.get("user_id")
 
     logger.info(f"HTML to DOCX /convert/html2docx conversion requested", job_id=job_id, user_id=user_id)
 
@@ -218,7 +217,7 @@ async def convert_html_to_docx(
 async def download_resume_file(
     file_name: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Download a resume file from the resume directory.
@@ -236,7 +235,6 @@ async def download_resume_file(
     Returns:
         FileResponse with the requested file
     """
-    user_id = current_user.get("user_id")
 
     logger.info(f"Resume file download requested", file_name=file_name, user_id=user_id)
 
@@ -323,7 +321,7 @@ class ConvertFinalResponse(BaseModel):
 async def convert_final(
     request: ConvertFinalRequest,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Convert the final resume (resume_md_rewrite) to the specified output format.
@@ -347,7 +345,6 @@ async def convert_final(
     Raises:
         HTTPException: If resume not found or conversion fails
     """
-    user_id = current_user.get("user_id")
     try:
         logger.info(f"Converting final resume", resume_id=request.resume_id, output_format=request.output_format, user_id=user_id)
 
@@ -455,7 +452,7 @@ class ConvertFileResponse(BaseModel):
 async def convert_file(
     request: ConvertFileRequest,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Convert resume file using user configuration settings.
@@ -487,7 +484,6 @@ async def convert_file(
     Raises:
         HTTPException: If resume not found or conversion fails
     """
-    user_id = current_user.get("user_id")
     try:
         logger.info(f"File conversion requested", resume_id=request.resume_id,
                    source_format=request.source_format, target_format=request.target_format, user_id=user_id)

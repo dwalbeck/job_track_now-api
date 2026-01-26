@@ -611,7 +611,7 @@ def get_user_setting(user_id: int, db: Session) -> UserSettingResponse:
 @router.get("/user/setting", response_model=UserSettingResponse)
 async def get_user_setting_endpoint(
     user_id: int,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    token_user_id: str = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -620,7 +620,6 @@ async def get_user_setting_endpoint(
     Requires authentication. Users can only access their own settings.
     """
     # Verify user can only access their own settings
-    token_user_id = current_user.get("user_id")
     if token_user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

@@ -108,14 +108,8 @@ def client(test_db):
             pass
 
     def override_get_current_user():
-        """Mock authentication - returns test user payload."""
-        return {
-            "user_id": test_user_id,
-            "sub": "testuser",
-            "preferred_username": "testuser",
-            "is_admin": False,
-            "scope": "all"
-        }
+        """Mock authentication - returns test user_id."""
+        return test_user_id
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_current_user] = override_get_current_user

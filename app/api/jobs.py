@@ -18,13 +18,13 @@ router = APIRouter()
 @router.get("/jobs", response_model=List[JobSchema])
 async def get_all_jobs(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Get all active jobs ordered by last activity (newest first).
     Includes latest calendar appointment data if available.
     """
-    user_id = current_user.get("user_id")
+
     logger.debug("Fetching all active jobs", user_id=user_id)
 
     # Use raw SQL to include calendar data from next upcoming appointment
@@ -61,12 +61,12 @@ async def get_all_jobs(
 async def delete_job(
     job_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Soft delete a job by setting job_active to false.
     """
-    user_id = current_user.get("user_id")
+
     logger.info(f"Attempting to delete job", job_id=job_id, user_id=user_id)
 
     job = db.query(Job).filter(Job.job_id == job_id, Job.user_id == user_id).first()
@@ -85,12 +85,12 @@ async def delete_job(
 @router.get("/job/list", response_model=List[JobList])
 async def get_job_list(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Get a list of jobs for dropdown selection.
     """
-    user_id = current_user.get("user_id")
+
     logger.debug("Fetching job list for dropdown", user_id=user_id)
 
     jobs = db.query(Job.job_id, Job.company, Job.job_title).filter(
@@ -110,12 +110,12 @@ async def get_job_list(
 async def get_job(
     job_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Get a single job by ID with job_detail fields included.
     """
-    user_id = current_user.get("user_id")
+
     logger.debug(f"Fetching job", job_id=job_id, user_id=user_id)
 
     # Use a SQL query to join job and job_detail tables
@@ -144,12 +144,12 @@ async def get_job(
 async def create_or_update_job(
     job_data: JobUpdate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Create a new job or update an existing one.
     """
-    user_id = current_user.get("user_id")
+
     is_update = bool(job_data.job_id)
     action = "update" if is_update else "create"
 
@@ -233,7 +233,7 @@ async def create_or_update_job(
 async def extract_job_data(
     extract_request: JobExtractRequest,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Extract job qualifications and keywords from a job description using AI.
@@ -251,7 +251,7 @@ async def extract_job_data(
     - job_qualification: Extracted qualification section
     - keywords: List of extracted keywords
     """
-    user_id = current_user.get("user_id")
+
     logger.info(f"Extracting job data", job_id=extract_request.job_id, user_id=user_id)
 
     try:
@@ -293,6 +293,9 @@ async def extract_job_data(
             keywords=result['keywords']
         )
 
+    except HTTPException:
+        # Let HTTPExceptions pass through unchanged
+        raise
     except ValueError as e:
         # Handle job not found or empty job_desc errors
         logger.error(f"Validation error during extraction", job_id=extract_request.job_id, error=str(e), user_id=user_id)
@@ -310,7 +313,7 @@ async def extract_job_data(
 async def create_or_update_job_detail(
     detail_data: JobDetailCreate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Create or update job detail information.
@@ -326,7 +329,7 @@ async def create_or_update_job_detail(
 
     Returns HTTP 200 on success.
     """
-    user_id = current_user.get("user_id")
+
     logger.info(f"Creating/updating job detail", job_id=detail_data.job_id, user_id=user_id)
 
     # Verify that the job exists and belongs to user

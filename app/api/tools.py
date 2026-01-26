@@ -15,7 +15,7 @@ router = APIRouter()
 async def elevator_pitch(
 		request: ToolsPitchRequest,
 		db: Session = Depends(get_db),
-		current_user: dict = Depends(get_current_user)
+		user_id: str = Depends(get_current_user)
 ):
 	"""
 	This endpoint will write an elevator pitch.  It will first query the DB for the resume and job desc (if job_id is present). Then it
@@ -26,7 +26,6 @@ async def elevator_pitch(
 	:param current_user: Current authenticated user
 	:return: ToolsPitchResponse with pitch
 	"""
-	user_id = current_user.get("user_id")
 	logger.debug(f"Starting endpoint /v1/tools/pitch", job_id=request.job_id, user_id=user_id)
 
 	try:
@@ -93,7 +92,7 @@ async def elevator_pitch(
 async def rewrite_text(
 		request: ToolsRewriteRequest,
 		db: Session = Depends(get_db),
-		current_user: dict = Depends(get_current_user)
+		user_id: str = Depends(get_current_user)
 ):
 	"""
 	This endpoint will rewrite a text blob using AI to improve clarity, grammar, and professionalism.
@@ -103,7 +102,7 @@ async def rewrite_text(
 	:param current_user: Current authenticated user
 	:return: ToolsRewriteResponse with original, new text, and explanation
 	"""
-	user_id = current_user.get("user_id")
+
 	logger.debug(f"Starting endpoint /v1/tools/rewrite", user_id=user_id)
 
 	try:

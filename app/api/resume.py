@@ -266,14 +266,13 @@ def make_unique_filename(base_filename: str, db: Session, user_id: int) -> str:
 @router.get("/resume/baseline")
 async def get_baseline_resumes(
 	db: Session = Depends(get_db),
-	current_user: dict = Depends(get_current_user)
+	user_id: str = Depends(get_current_user)
 ):
 	"""
 	Get all baseline resumes.
 
 	Returns a list of baseline resumes ordered by is_default, resume_updated, and resume_created.
 	"""
-	user_id = current_user.get("user_id")
 	query = text("""
 		SELECT r.resume_id, r.resume_title, r.resume_updated, r.is_default,
 			   rd.keyword_count, rd.focus_count
@@ -301,7 +300,7 @@ async def get_baseline_resumes(
 @router.get("/resume/baseline/list")
 async def get_baseline_resume_list(
 	db: Session = Depends(get_db),
-	current_user: dict = Depends(get_current_user)
+	user_id: str = Depends(get_current_user)
 ):
 	"""
 	Get a simple list of baseline resumes for dropdown/selection purposes.
@@ -309,7 +308,6 @@ async def get_baseline_resume_list(
 	Returns only resume_id, resume_title, and is_default fields,
 	ordered by is_default (descending) then resume_title (ascending).
 	"""
-	user_id = current_user.get("user_id")
 	query = text("""
 		SELECT resume_id, resume_title, is_default
 		FROM resume
@@ -332,7 +330,7 @@ async def get_baseline_resume_list(
 @router.get("/resume/job", response_model=List[ResumeJob])
 async def get_job_resumes(
 	db: Session = Depends(get_db),
-	current_user: dict = Depends(get_current_user)
+	user_id: str = Depends(get_current_user)
 ):
 	"""
 	Get all job-specific resumes.
@@ -340,7 +338,6 @@ async def get_job_resumes(
 	Returns a list of resumes associated with jobs, including company, job title,
 	keyword/focus counts, and scores from resume_detail if available.
 	"""
-	user_id = current_user.get("user_id")
 	query = text("""
 		SELECT j.company, j.job_title, j.job_id, rd.keyword_count, rd.focus_count,
 			   rd.baseline_score, rd.rewrite_score,
@@ -382,14 +379,13 @@ async def get_job_resumes(
 async def get_resume(
 	resume_id: int,
 	db: Session = Depends(get_db),
-	current_user: dict = Depends(get_current_user)
+	user_id: str = Depends(get_current_user)
 ):
 	"""
 	Get a single resume by ID.
 
 	Returns all fields from the resume table for the specified resume_id.
 	"""
-	user_id = current_user.get("user_id")
 	resume = db.query(Resume).filter(
 		Resume.resume_id == resume_id,
 		Resume.user_id == user_id
@@ -417,14 +413,13 @@ async def get_resume(
 async def get_resume_detail(
 	resume_id: int,
 	db: Session = Depends(get_db),
-	current_user: dict = Depends(get_current_user)
+	user_id: str = Depends(get_current_user)
 ):
 	"""
 	Get resume detail by resume ID.
 
 	Returns all fields from the resume_detail table for the specified resume_id.
 	"""
-	user_id = current_user.get("user_id")
 	# First verify the resume belongs to the user
 	resume = db.query(Resume).filter(
 		Resume.resume_id == resume_id,
@@ -469,7 +464,7 @@ async def create_or_update_resume(
 	job_id: Optional[int] = Form(None),
 	resume_id: Optional[int] = Form(None),
 	db: Session = Depends(get_db),
-	current_user: dict = Depends(get_current_user)
+	user_id: str = Depends(get_current_user)
 ):
 	"""
 	Create a new resume or update an existing one.
@@ -485,7 +480,6 @@ async def create_or_update_resume(
 	- resume_id: ID of resume to update (omit for insert)
 	"""
 
-	user_id = current_user.get("user_id")
 	is_update = bool(resume_id)
 	logger.info("starting POST resume", resume_title=resume_title, user_id=user_id)
 
@@ -683,7 +677,7 @@ async def create_or_update_resume(
 async def update_resume_json(
 	resume_data: ResumeUpdate,
 	db: Session = Depends(get_db),
-	current_user: dict = Depends(get_current_user)
+	user_id: str = Depends(get_current_user)
 ):
 	"""
 	Update an existing resume using JSON payload.
@@ -691,7 +685,6 @@ async def update_resume_json(
 	This endpoint accepts JSON and is used for simple resume metadata updates
 	without file uploads.
 	"""
-	user_id = current_user.get("user_id")
 	if not resume_data.resume_id:
 		raise HTTPException(status_code=400, detail="resume_id is required for updates")
 
@@ -762,7 +755,7 @@ async def update_resume_json(
 async def create_or_update_resume_detail(
 	detail_data: ResumeDetailCreate,
 	db: Session = Depends(get_db),
-	current_user: dict = Depends(get_current_user)
+	user_id: str = Depends(get_current_user)
 ):
 	"""
 	Create or update resume detail information.
@@ -779,7 +772,6 @@ async def create_or_update_resume_detail(
 	- resume_keyword: List of keywords applied
 	- focus_count: Number of focus areas applied
 	"""
-	user_id = current_user.get("user_id")
 
 	# Verify that the resume exists and belongs to user
 	resume = db.query(Resume).filter(
@@ -830,7 +822,7 @@ async def create_or_update_resume_detail(
 async def delete_resume(
 	resume_id: int,
 	db: Session = Depends(get_db),
-	current_user: dict = Depends(get_current_user)
+	user_id: str = Depends(get_current_user)
 ):
 	"""
 	Soft delete a resume record by setting is_active to false.
@@ -841,7 +833,6 @@ async def delete_resume(
 	Query parameters:
 	- resume_id: ID of the resume to delete
 	"""
-	user_id = current_user.get("user_id")
 
 	# Fetch the resume - ensure it belongs to user
 	resume = db.query(Resume).filter(
@@ -865,7 +856,7 @@ async def delete_resume(
 async def clone_resume(
 	clone_request: ResumeCloneRequest,
 	db: Session = Depends(get_db),
-	current_user: dict = Depends(get_current_user)
+	user_id: str = Depends(get_current_user)
 ):
 	"""
 	Clone an existing resume record and its associated file.
@@ -876,7 +867,6 @@ async def clone_resume(
 	JSON body:
 	- resume_id: ID of the resume to clone
 	"""
-	user_id = current_user.get("user_id")
 
 	# Fetch the original resume - ensure it belongs to user
 	original_resume = db.query(Resume).filter(
@@ -1040,7 +1030,7 @@ async def clone_resume(
 async def extract_resume_data(
 	extract_request: ResumeExtractRequest,
 	db: Session = Depends(get_db),
-	current_user: dict = Depends(get_current_user)
+	user_id: str = Depends(get_current_user)
 ):
 	"""
 	Extract job title and suggestions from a resume using AI.
@@ -1056,7 +1046,6 @@ async def extract_resume_data(
 	- job_title: Object containing job_title string and line_number
 	- suggestions: List of improvement suggestions
 	"""
-	user_id = current_user.get("user_id")
 
 	# Verify the resume belongs to user
 	resume = db.query(Resume).filter(
@@ -1096,7 +1085,7 @@ async def extract_resume_data(
 async def resume_full(
 	request: ResumeFullRequest,
 	db: Session = Depends(get_db),
-	current_user: dict = Depends(get_current_user)
+	user_id: str = Depends(get_current_user)
 ):
 	"""
 	Used to create the initial 'resume' and 'resume_detail' records populated with baseline resume
@@ -1108,7 +1097,6 @@ async def resume_full(
 	:param db:
 	:return: resume_id
 	"""
-	user_id = current_user.get("user_id")
 	logger.info(f"Creating resume for job posting", job_id=request.job_id, baseline_resume_id=request.baseline_resume_id, user_id=user_id)
 
 	try:
@@ -1298,7 +1286,7 @@ async def resume_full(
 async def get_rewrite_data(
 	job_id: int,
 	db: Session = Depends(get_db),
-	current_user: dict = Depends(get_current_user)
+	user_id: str = Depends(get_current_user)
 ):
 	"""
 	Retrieve the resume rewrite data for a given job.
@@ -1314,7 +1302,6 @@ async def get_rewrite_data(
 	Returns:
 		ResumeRewriteResponse with resume data including HTML, suggestions, and scores
 	"""
-	user_id = current_user.get("user_id")
 	try:
 		logger.debug(f"Start resume/rewrite data retrieval", job_id=job_id, user_id=user_id)
 
@@ -1352,7 +1339,7 @@ async def rewrite_resume(
 	request: ResumeRewriteRequest,
 	background_tasks: BackgroundTasks,
 	db: Session = Depends(get_db),
-	current_user: dict = Depends(get_current_user)
+	user_id: str = Depends(get_current_user)
 ):
 	"""
 	Rewrite resume using baseline resume for a specific job using AI.
@@ -1374,7 +1361,6 @@ async def rewrite_resume(
 	Returns:
 		202 Accepted with process_id
 	"""
-	user_id = current_user.get("user_id")
 	try:
 		logger.info(f"Initiating resume rewrite", job_id=request.job_id, user_id=user_id)
 

@@ -17,13 +17,13 @@ router = APIRouter()
 async def create_or_update_contact(
     contact_data: ContactUpdate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Create a new contact or update an existing one.
     If job_id is provided, also create/verify the job_contact link.
     """
-    user_id = current_user.get("user_id")
+
     is_update = bool(contact_data.contact_id)
     action = "update" if is_update else "create"
     job_id = contact_data.job_id
@@ -93,12 +93,12 @@ async def create_or_update_contact(
 async def delete_contact(
     contact_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Soft delete a contact by setting contact_active to false.
     """
-    user_id = current_user.get("user_id")
+
     contact = db.query(Contact).filter(
         Contact.contact_id == contact_id,
         Contact.user_id == user_id
@@ -117,12 +117,11 @@ async def get_contact(
     contact_id: int,
     job_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Get a single contact by ID with linked jobs.
     """
-    user_id = current_user.get("user_id")
     contact = db.query(Contact).filter(
         Contact.contact_id == contact_id,
         Contact.user_id == user_id,
@@ -171,12 +170,11 @@ async def get_contact(
 async def get_contacts(
     job_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Get all contacts, optionally filtered by job_id.
     """
-    user_id = current_user.get("user_id")
     logger.debug("Fetching contacts list", job_id=job_id, user_id=user_id)
 
     if job_id:

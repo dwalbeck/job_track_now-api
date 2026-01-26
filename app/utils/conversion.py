@@ -1,5 +1,4 @@
 import os
-from fastapi import Depends
 from docx import Document
 from docx.shared import Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -7,7 +6,6 @@ from pathlib import Path
 from typing import Optional
 from ..core.config import settings
 from ..utils.logger import logger
-from ..middleware.auth_middleware import get_current_user
 
 
 class Conversion:
@@ -1611,13 +1609,14 @@ class Conversion:
     # ========================================================================================
 
     @classmethod
-    def docx2html_convertapi(cls, input_path: str, output_path: str) -> bool:
+    def docx2html_convertapi(cls, input_path: str, output_path: str, user_id: int = None) -> bool:
         """
         Convert DOCX file to HTML using ConvertAPI service.
 
         Args:
             input_path: Full path to input DOCX file
             output_path: Full path for output HTML file
+            user_id: User ID to retrieve ConvertAPI key
 
         Returns:
             True if conversion successful, False otherwise
@@ -1630,7 +1629,7 @@ class Conversion:
                 return False
 
             # Get ConvertAPI key from database
-            api_key = cls._get_convertapi_key()
+            api_key = cls._get_convertapi_key(user_id)
             if not api_key:
                 return False
 
@@ -1659,13 +1658,104 @@ class Conversion:
             return False
 
     @classmethod
-    def html2docx_convertapi(cls, input_path: str, output_path: str) -> bool:
+    def odt2html_convertapi(cls, input_path: str, output_path: str, user_id: int = None) -> bool:
+        """
+        Convert ODT file to HTML using ConvertAPI service.
+
+        Args:
+            input_path: Full path to input ODT file
+            output_path: Full path for output HTML file
+            user_id: User ID to retrieve ConvertAPI key
+
+        Returns:
+            True if conversion successful, False otherwise
+        """
+        try:
+            import convertapi
+
+            if not os.path.exists(input_path):
+                logger.error(f"Input file not found", input_path=input_path)
+                return False
+
+            # Get ConvertAPI key from database
+            api_key = cls._get_convertapi_key(user_id)
+            if not api_key:
+                return False
+
+            # Ensure output directory exists before conversion
+            output_dir = os.path.dirname(output_path)
+            if output_dir:
+                os.makedirs(output_dir, exist_ok=True)
+
+            convertapi.api_credentials = api_key
+            logger.debug(f"ConvertAPI conversion starting", input=input_path, output=output_path)
+
+            result = convertapi.convert('html', {'File': input_path}, from_format='odt')
+            result.file.save(output_path)
+
+            logger.info(f"ODT to HTML conversion (ConvertAPI) successful", input=input_path, output=output_path)
+            return True
+
+        except Exception as e:
+            logger.error(f"ODT to HTML conversion (ConvertAPI) failed", error=str(e), input=input_path)
+            import traceback
+            logger.debug(f"ConvertAPI traceback", traceback=traceback.format_exc())
+            return False
+
+    @classmethod
+    def pdf2html_convertapi(cls, input_path: str, output_path: str, user_id: int = None) -> bool:
+        """
+        Convert PDF file to HTML using ConvertAPI service.
+
+        Args:
+            input_path: Full path to input PDF file
+            output_path: Full path for output HTML file
+            user_id: User ID to retrieve ConvertAPI key
+
+        Returns:
+            True if conversion successful, False otherwise
+        """
+        try:
+            import convertapi
+
+            if not os.path.exists(input_path):
+                logger.error(f"Input file not found", input_path=input_path)
+                return False
+
+            # Get ConvertAPI key from database
+            api_key = cls._get_convertapi_key(user_id)
+            if not api_key:
+                return False
+
+            # Ensure output directory exists before conversion
+            output_dir = os.path.dirname(output_path)
+            if output_dir:
+                os.makedirs(output_dir, exist_ok=True)
+
+            convertapi.api_credentials = api_key
+            logger.debug(f"ConvertAPI conversion starting", input=input_path, output=output_path)
+
+            result = convertapi.convert('html', {'File': input_path}, from_format='pdf')
+            result.file.save(output_path)
+
+            logger.info(f"PDF to HTML conversion (ConvertAPI) successful", input=input_path, output=output_path)
+            return True
+
+        except Exception as e:
+            logger.error(f"PDF to HTML conversion (ConvertAPI) failed", error=str(e), input=input_path)
+            import traceback
+            logger.debug(f"ConvertAPI traceback", traceback=traceback.format_exc())
+            return False
+
+    @classmethod
+    def html2docx_convertapi(cls, input_path: str, output_path: str, user_id: int = None) -> bool:
         """
         Convert HTML file to DOCX using ConvertAPI service.
 
         Args:
             input_path: Full path to input HTML file
             output_path: Full path for output DOCX file
+            user_id: User ID to retrieve ConvertAPI key
 
         Returns:
             True if conversion successful, False otherwise
@@ -1673,9 +1763,6 @@ class Conversion:
         try:
             import convertapi
             import threading
-
-            current_user: dict = Depends(get_current_user)
-            user_id = Depends(get_current_user)
 
             if not os.path.exists(input_path):
                 logger.error(f"Input file not found", input_path=input_path)
@@ -1740,13 +1827,14 @@ class Conversion:
             raise
 
     @classmethod
-    def html2odt_convertapi(cls, input_path: str, output_path: str) -> bool:
+    def html2odt_convertapi(cls, input_path: str, output_path: str, user_id: int = None) -> bool:
         """
         Convert HTML file to ODT using ConvertAPI service.
 
         Args:
             input_path: Full path to input HTML file
             output_path: Full path for output ODT file
+            user_id: User ID to retrieve ConvertAPI key
 
         Returns:
             True if conversion successful, False otherwise
@@ -1760,7 +1848,7 @@ class Conversion:
                 return False
 
             # Get ConvertAPI key from database
-            api_key = cls._get_convertapi_key()
+            api_key = cls._get_convertapi_key(user_id)
             if not api_key:
                 logger.error("ConvertAPI key not available, cannot proceed with conversion")
                 return False
@@ -1818,13 +1906,14 @@ class Conversion:
             raise
 
     @classmethod
-    def html2pdf_convertapi(cls, input_path: str, output_path: str) -> bool:
+    def html2pdf_convertapi(cls, input_path: str, output_path: str, user_id: int = None) -> bool:
         """
         Convert HTML file to PDF using ConvertAPI service.
 
         Args:
             input_path: Full path to input HTML file
             output_path: Full path for output PDF file
+            user_id: User ID to retrieve ConvertAPI key
 
         Returns:
             True if conversion successful, False otherwise
@@ -1838,7 +1927,7 @@ class Conversion:
                 return False
 
             # Get ConvertAPI key from database
-            api_key = cls._get_convertapi_key()
+            api_key = cls._get_convertapi_key(user_id)
             if not api_key:
                 logger.error("ConvertAPI key not available, cannot proceed with conversion")
                 return False
@@ -2026,37 +2115,37 @@ class Conversion:
             # NO FALLBACK - Use configured method only
             if conversion_key == 'docx2html':
                 if preferred_method == 'convertapi':
-                    return cls.docx2html_convertapi(input_path, output_path)
+                    return cls.docx2html_convertapi(input_path, output_path, user_id)
                 elif preferred_method == 'docx-parser-converter':
                     return cls.docx2html_docx_parser_converter(input_path, output_path)
 
             elif conversion_key == 'odt2html':
                 if preferred_method == 'convertapi':
-                    return cls.odt2html_convertapi(input_path, output_path)
+                    return cls.odt2html_convertapi(input_path, output_path, user_id)
                 elif preferred_method == 'pandoc':
                     return cls.odt2html_pandoc(input_path, output_path)
 
             elif conversion_key == 'pdf2html':
                 if preferred_method == 'convertapi':
-                    return cls.pdf2html_convertapi(input_path, output_path)
+                    return cls.pdf2html_convertapi(input_path, output_path, user_id)
                 elif preferred_method == 'markitdown':
                     return cls.pdf2html_markitdown(input_path, output_path)
 
             elif conversion_key == 'html2docx':
                 if preferred_method == 'convertapi':
-                    return cls.html2docx_convertapi(input_path, output_path)
+                    return cls.html2docx_convertapi(input_path, output_path, user_id)
                 elif preferred_method == 'html4docx':
                     return cls.html2docx_html4docx(input_path, output_path)
 
             elif conversion_key == 'html2odt':
                 if preferred_method == 'convertapi':
-                    return cls.html2odt_convertapi(input_path, output_path)
+                    return cls.html2odt_convertapi(input_path, output_path, user_id)
                 elif preferred_method == 'pandoc':
                     return cls.html2odt_pandoc(input_path, output_path)
 
             elif conversion_key == 'html2pdf':
                 if preferred_method == 'convertapi':
-                    return cls.html2pdf_convertapi(input_path, output_path)
+                    return cls.html2pdf_convertapi(input_path, output_path, user_id)
                 elif preferred_method == 'weasyprint':
                     return cls.html2pdf_weasyprint(input_path, output_path)
 

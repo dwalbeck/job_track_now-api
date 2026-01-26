@@ -19,7 +19,7 @@ router = APIRouter()
 async def create_company(
     company_data: CompanyCreate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Create a new company record.
@@ -27,7 +27,7 @@ async def create_company(
 
     If a company record already exists for the given job_id, returns the existing company_id.
     """
-    user_id = current_user.get("user_id")
+
     logger.info(f"Attempting to create company", company_name=company_data.company_name, job_id=company_data.job_id, user_id=user_id)
 
     # Verify job_id is provided (now required due to NOT NULL constraint)
@@ -72,7 +72,7 @@ async def create_company(
 async def update_company(
     company_data: CompanyUpdate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Update an existing company record.
@@ -86,7 +86,7 @@ async def update_company(
     import requests
     import mimetypes
 
-    user_id = current_user.get("user_id")
+
     logger.info(f"Attempting to update company", company_id=company_data.company_id, user_id=user_id)
 
     # Find the company - ensure it belongs to user
@@ -162,14 +162,14 @@ async def update_company(
 @router.get("/company/list")
 async def get_company_list(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Retrieve list of all company reports.
 
     Returns companies that have report_html content, ordered by company_name.
     """
-    user_id = current_user.get("user_id")
+
     logger.info("Fetching company list", user_id=user_id)
 
     query = "SELECT * FROM company WHERE user_id = :user_id AND report_html IS NOT NULL ORDER BY company_name ASC"
@@ -204,12 +204,12 @@ async def get_company_list(
 async def get_company(
     company_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Retrieve a specific company record by company_id.
     """
-    user_id = current_user.get("user_id")
+
     logger.info(f"Fetching company", company_id=company_id, user_id=user_id)
 
     company = db.query(Company).filter(
@@ -232,7 +232,7 @@ async def get_company(
 async def get_company_by_job(
     job_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Retrieve company data associated with a specific job_id.
@@ -241,7 +241,7 @@ async def get_company_by_job(
     """
     from sqlalchemy import text
 
-    user_id = current_user.get("user_id")
+
     logger.info(f"Fetching company by job_id", job_id=job_id, user_id=user_id)
 
     # Execute query to get job.company and company fields - filter by user_id
@@ -286,7 +286,7 @@ async def get_company_by_job(
 async def search_company(
     company_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Search for company information using AI to identify and verify company details.
@@ -300,7 +300,7 @@ async def search_company(
     - match_score
     - company_logo_url
     """
-    user_id = current_user.get("user_id")
+
     logger.info(f"Starting company search", company_id=company_id, user_id=user_id)
 
     # Verify company exists and belongs to user
@@ -338,7 +338,7 @@ async def search_company(
 async def research_company(
     company_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Initiate company research process using AI.
@@ -354,7 +354,7 @@ async def research_company(
     Returns:
         202 status with process_id for polling
     """
-    user_id = current_user.get("user_id")
+
     logger.info(f"Initiating company research", company_id=company_id, user_id=user_id)
 
     # Verify company exists and belongs to user
@@ -405,12 +405,12 @@ async def research_company(
 async def delete_company(
     company_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Delete a company record.
     """
-    user_id = current_user.get("user_id")
+
     logger.info(f"Attempting to delete company", company_id=company_id, user_id=user_id)
 
     company = db.query(Company).filter(
@@ -435,7 +435,7 @@ async def delete_company(
 async def download_company_report(
     company_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Download company report as DOCX file.
@@ -447,7 +447,6 @@ async def download_company_report(
     from ..utils.conversion import Conversion
     import os
 
-    user_id = current_user.get("user_id")
     logger.info(f"Downloading company report", company_id=company_id, user_id=user_id)
 
     company = db.query(Company).filter(

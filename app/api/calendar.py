@@ -18,12 +18,11 @@ router = APIRouter()
 async def get_job_appointments(
     job_id: int = Query(..., description="Job ID to get appointments for"),
     db: Session = Depends(get_db),
-    current_user: str = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Get all appointments for a specific job.
     """
-    user_id = current_user.get("user_id")
     query = """
         SELECT calendar_id, calendar_type, start_time, end_time, start_date, end_date,
                participant, calendar_desc, outcome_score
@@ -55,12 +54,11 @@ async def get_month_calendar(
     date: str = Query(..., description="Date in YYYY-MM format"),
     job_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Get calendar appointments for a specific month.
     """
-    user_id = current_user.get("user_id")
     try:
         start_date, end_date = get_month_date_range(date)
     except ValueError:
@@ -110,7 +108,7 @@ async def get_week_calendar(
     date: str = Query(..., description="Date in YYYY-MM-DD format (must be Monday)"),
     job_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Get calendar appointments for a specific week.
@@ -168,12 +166,11 @@ async def get_day_calendar(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
     job_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Get calendar appointments for a specific day.
     """
-    user_id = current_user.get("user_id")
     query = """
         SELECT c.*, j.company
         FROM calendar c
@@ -218,12 +215,12 @@ async def create_or_update_calendar(
     calendar_data: CalendarUpdate,
     job_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Create a new calendar event or update an existing one.
     """
-    user_id = current_user.get("user_id")
+
     calendar_data.user_id = user_id
     # Use job_id from query parameter if provided and not in body
     if job_id and not calendar_data.job_id:
@@ -280,14 +277,14 @@ async def create_or_update_calendar(
 async def get_calendar_event(
     calendar_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Get a single calendar event by ID.
     This route must be defined AFTER the specific routes (/month, /week, /day)
     to avoid path conflicts.
     """
-    user_id = current_user.get("user_id")
+
     query = """
         SELECT c.*, j.company
         FROM calendar c
@@ -323,12 +320,12 @@ async def get_calendar_event(
 async def delete_calendar_appointment(
     appointment_id: int = Query(..., description="Calendar appointment ID to delete"),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Delete a calendar appointment by ID.
     """
-    user_id = current_user.get("user_id")
+
     try:
         # Check if appointment exists and belongs to user
         appointment = db.query(Calendar).filter(

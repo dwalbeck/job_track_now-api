@@ -25,6 +25,7 @@ class CalendarCreate(CalendarBase):
 
 class CalendarUpdate(BaseModel):
     calendar_id: Optional[int] = None
+    user_id: Optional[int] = None
     job_id: Optional[int] = None
     calendar_type: Optional[str] = None
     start_date: Optional[date] = None
@@ -39,7 +40,7 @@ class CalendarUpdate(BaseModel):
     outcome_note: Optional[str] = None
     video_link: Optional[str] = None
 
-    @field_validator('calendar_id', 'job_id', 'outcome_score', mode='before')
+    @field_validator('calendar_id', 'user_id', 'job_id', 'outcome_score', mode='before')
     @classmethod
     def empty_str_to_none_int(cls, v):
         if v == '':

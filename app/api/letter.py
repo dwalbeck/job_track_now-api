@@ -21,7 +21,7 @@ router = APIRouter()
 async def get_letter(
     cover_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Get a specific cover letter by cover_id.
@@ -33,7 +33,7 @@ async def get_letter(
     Returns:
         Cover letter details
     """
-    user_id = current_user.get("user_id")
+
     try:
         query = text("""
             SELECT cover_id, resume_id, job_id, letter_length, letter_tone,
@@ -75,7 +75,7 @@ async def get_letter(
 @router.get("/letter/list", response_model=List[LetterListItem])
 async def get_letter_list(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Get a list of all active cover letters with job information.
@@ -86,7 +86,6 @@ async def get_letter_list(
     Returns:
         List of active cover letters with summary information
     """
-    user_id = current_user.get("user_id")
     try:
         query = text("""
             SELECT cl.letter_tone, cl.letter_length, cl.letter_created,
@@ -127,7 +126,7 @@ async def get_letter_list(
 async def save_letter(
     letter_data: dict,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Create or update a cover letter.
@@ -142,7 +141,6 @@ async def save_letter(
     Returns:
         Success status with cover_id
     """
-    user_id = current_user.get("user_id")
     try:
         cover_id = letter_data.get('cover_id')
 
@@ -272,7 +270,7 @@ async def save_letter(
 async def delete_letter(
     cover_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Soft delete a cover letter by setting letter_active to false.
@@ -284,7 +282,6 @@ async def delete_letter(
     Returns:
         Success status
     """
-    user_id = current_user.get("user_id")
     try:
         # Check if the cover letter exists and belongs to user
         check_query = text("""
@@ -325,7 +322,7 @@ async def delete_letter(
 @router.post("/letter/write", status_code=status.HTTP_200_OK)
 async def write_cover_letter(
     request_data: dict,
-    current_user: Dict[str, Any] = Depends(get_current_user),
+    user_id: str = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     """
@@ -341,7 +338,6 @@ async def write_cover_letter(
         Dictionary containing the generated letter_content
     """
     try:
-        user_id = current_user.get("user_id")
         if not user_id:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -458,7 +454,7 @@ async def write_cover_letter(
 async def convert_cover_letter(
     request_data: dict,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Convert a cover letter (HTML format) to DOCX format.
@@ -470,7 +466,6 @@ async def convert_cover_letter(
     Returns:
         Dictionary containing the generated file_name
     """
-    user_id = current_user.get("user_id")
     try:
         cover_id = request_data.get('cover_id')
         output_format = request_data.get('format', 'docx')

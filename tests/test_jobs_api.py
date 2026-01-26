@@ -77,12 +77,12 @@ class TestGetAllJobs:
                 (1, :user_id, 'Job With Appt', 'Engineer', 'interviewing', true, '2025-01-10', 'job_with_appt_engineer', 5, 5),
                 (2, :user_id, 'Job No Appt', 'Developer', 'applied', true, '2025-01-08', 'job_no_appt_developer', 5, 5)
         """), {"user_id": user_id})
-        # Create calendar appointments for first job
+        # Create calendar appointments for first job (dates must be in the future)
         test_db.execute(text("""
             INSERT INTO calendar (user_id, job_id, start_date, start_time, calendar_type)
             VALUES
-                (:user_id, 1, '2025-01-05', '10:00:00', 'interview'),
-                (:user_id, 1, '2025-01-20', '14:30:00', 'interview')
+                (:user_id, 1, CURRENT_DATE + INTERVAL '10 days', '10:00:00', 'interview'),
+                (:user_id, 1, CURRENT_DATE + INTERVAL '20 days', '14:30:00', 'interview')
         """), {"user_id": user_id})
         test_db.commit()
 
@@ -92,11 +92,11 @@ class TestGetAllJobs:
         jobs = response.json()
 
         assert len(jobs) == 2
-        # First job should have calendar data from most recent appointment
+        # First job should have calendar data from next upcoming appointment
         job_with_appt = next(job for job in jobs if job['company'] == 'Job With Appt')
         assert job_with_appt['calendar_id'] is not None
-        assert job_with_appt['start_date'] == '2025-01-20'
-        assert job_with_appt['start_time'] == '14:30:00'
+        assert job_with_appt['start_date'] is not None  # Date is dynamic
+        assert job_with_appt['start_time'] == '10:00:00'  # First upcoming appointment
 
         # Second job should have None for calendar fields
         job_no_appt = next(job for job in jobs if job['company'] == 'Job No Appt')
@@ -197,10 +197,10 @@ class TestGetJob:
         user_id = get_test_user_id(test_db)
         # Create test job
         test_db.execute(text("""
-            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_url, interest_level,
-                           location, salary_min, salary_max, job_active, job_directory)
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, posting_url, interest_level,
+                           location, salary, job_active, job_directory)
             VALUES (1, :user_id, 'Tesla', 'Software Engineer', 'applied', 'https://tesla.com/jobs/123',
-                   8, 'Palo Alto, CA', 150000, 200000, true, 'tesla_software_engineer')
+                   8, 'Palo Alto, CA', '$150,000 - $200,000', true, 'tesla_software_engineer')
         """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO job_detail (job_id, job_desc, job_qualification, job_keyword)
@@ -217,11 +217,10 @@ class TestGetJob:
         assert job['company'] == 'Tesla'
         assert job['job_title'] == 'Software Engineer'
         assert job['job_status'] == 'applied'
-        assert job['job_url'] == 'https://tesla.com/jobs/123'
+        assert job['posting_url'] == 'https://tesla.com/jobs/123'
         assert job['interest_level'] == 8
         assert job['location'] == 'Palo Alto, CA'
-        assert job['salary_min'] == 150000
-        assert job['salary_max'] == 200000
+        assert job['salary'] == '$150,000 - $200,000'
         assert job['job_desc'] == 'Build amazing software'
         assert job['job_qualification'] == 'BS in CS required'
         assert job['job_keyword'] == ['Python', 'React']
@@ -259,12 +258,10 @@ class TestCreateOrUpdateJob:
             "company": "Stripe",
             "job_title": "Full Stack Developer",
             "job_status": "applied",
-            "job_url": "https://stripe.com/careers/123",
+            "posting_url": "https://stripe.com/careers/123",
             "interest_level": 9,
             "location": "San Francisco, CA",
-            "salary_min": 160000,
-            "salary_max": 220000,
-            "remote_option": True,
+            "salary": "$160,000 - $220,000",
             "job_desc": "Build payment systems"
         }
 

@@ -19,6 +19,7 @@ class ContactCreate(ContactBase):
 
 class ContactUpdate(BaseModel):
     contact_id: Optional[int] = None
+    user_id: Optional[int] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     job_title: Optional[str] = None
@@ -29,7 +30,7 @@ class ContactUpdate(BaseModel):
     contact_note: Optional[str] = None
     job_id: Optional[int] = None
 
-    @field_validator('contact_id', 'job_id', mode='before')
+    @field_validator('contact_id', 'job_id', 'user_id', mode='before')
     @classmethod
     def empty_str_to_none_int(cls, v):
         if v == '':

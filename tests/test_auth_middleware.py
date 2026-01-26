@@ -2,7 +2,7 @@ import pytest
 from fastapi import FastAPI, Depends
 from fastapi.testclient import TestClient
 
-from app.middleware.auth_middleware import get_current_user, get_current_user_optional, require_scope
+from app.middleware.auth_middleware import get_current_user, get_jwt_payload, require_scope
 from app.utils.oauth_utils import create_access_token
 
 
@@ -11,9 +11,9 @@ test_app = FastAPI()
 
 
 @test_app.get("/protected")
-async def protected_endpoint(current_user: dict = Depends(get_current_user)):
-    """Protected endpoint requiring authentication"""
-    return {"message": "success", "user": current_user["preferred_username"]}
+async def protected_endpoint(user_id: int = Depends(get_current_user)):
+    """Protected endpoint requiring authentication - returns user_id"""
+    return {"message": "success", "user_id": user_id}
 
 
 @test_app.get("/protected/admin")
@@ -22,12 +22,10 @@ async def protected_admin_endpoint(current_user: dict = Depends(require_scope("a
     return {"message": "success", "user": current_user["preferred_username"]}
 
 
-@test_app.get("/optional")
-async def optional_auth_endpoint(current_user: dict = Depends(get_current_user_optional)):
-    """Endpoint with optional authentication"""
-    if current_user:
-        return {"authenticated": True, "user": current_user["preferred_username"]}
-    return {"authenticated": False}
+@test_app.get("/jwt-payload")
+async def jwt_payload_endpoint(payload: dict = Depends(get_jwt_payload)):
+    """Endpoint that returns the full JWT payload"""
+    return {"authenticated": True, "user": payload["preferred_username"]}
 
 
 @pytest.fixture
@@ -41,8 +39,8 @@ class TestAuthMiddleware:
 
     def test_protected_endpoint_with_valid_token(self, auth_client):
         """Test accessing protected endpoint with valid token"""
-        # Create valid access token
-        token = create_access_token(username="testuser", scope="all")
+        # Create valid access token with user_id
+        token = create_access_token(username="testuser", scope="all", user_id=1)
 
         # Request with Authorization header
         response = auth_client.get(
@@ -53,7 +51,7 @@ class TestAuthMiddleware:
         assert response.status_code == 200
         data = response.json()
         assert data["message"] == "success"
-        assert data["user"] == "testuser"
+        assert data["user_id"] == 1
 
     def test_protected_endpoint_without_token(self, auth_client):
         """Test accessing protected endpoint without token"""
@@ -79,15 +77,15 @@ class TestAuthMiddleware:
             headers={"Authorization": "InvalidFormat token"}
         )
 
-        assert response.status_code == 403
-        assert "Not authenticated" in response.json()["detail"]
+        # FastAPI's HTTPBearer returns 401 when header format is invalid
+        assert response.status_code == 401
 
-    def test_optional_auth_with_token(self, auth_client):
-        """Test optional auth endpoint with valid token"""
-        token = create_access_token(username="testuser", scope="all")
+    def test_jwt_payload_endpoint_with_token(self, auth_client):
+        """Test jwt-payload endpoint with valid token"""
+        token = create_access_token(username="testuser", scope="all", user_id=1)
 
         response = auth_client.get(
-            "/optional",
+            "/jwt-payload",
             headers={"Authorization": f"Bearer {token}"}
         )
 
@@ -96,17 +94,15 @@ class TestAuthMiddleware:
         assert data["authenticated"] is True
         assert data["user"] == "testuser"
 
-    def test_optional_auth_without_token(self, auth_client):
-        """Test optional auth endpoint without token"""
-        response = auth_client.get("/optional")
+    def test_jwt_payload_endpoint_without_token(self, auth_client):
+        """Test jwt-payload endpoint without token returns 401"""
+        response = auth_client.get("/jwt-payload")
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["authenticated"] is False
+        assert response.status_code == 401
 
     def test_scope_requirement_with_correct_scope(self, auth_client):
         """Test scope requirement with correct scope"""
-        token = create_access_token(username="testuser", scope="admin all")
+        token = create_access_token(username="testuser", scope="admin all", user_id=1)
 
         response = auth_client.get(
             "/protected/admin",
@@ -119,7 +115,7 @@ class TestAuthMiddleware:
 
     def test_scope_requirement_without_required_scope(self, auth_client):
         """Test scope requirement without required scope"""
-        token = create_access_token(username="testuser", scope="all")
+        token = create_access_token(username="testuser", scope="all", user_id=1)
 
         response = auth_client.get(
             "/protected/admin",
@@ -145,13 +141,13 @@ class TestAuthMiddleware:
 
         assert response.status_code == 401
 
-    def test_token_with_missing_claims(self, auth_client):
-        """Test token with missing required claims"""
-        # Create a minimal token missing some expected claims
-        import jwt
+    def test_token_with_missing_user_id(self, auth_client):
+        """Test token with missing user_id claim returns 401"""
+        # Create a minimal token missing user_id
+        from jose import jwt
         from app.utils.oauth_utils import SECRET_KEY, ALGORITHM
 
-        payload = {"sub": "testuser"}  # Missing many claims
+        payload = {"sub": "testuser"}  # Missing user_id
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
         response = auth_client.get(
@@ -159,9 +155,9 @@ class TestAuthMiddleware:
             headers={"Authorization": f"Bearer {token}"}
         )
 
-        # Should still work as we only require the token to be valid
-        # Individual endpoints can check for specific claims
-        assert response.status_code == 200
+        # Should fail because user_id is required
+        assert response.status_code == 401
+        assert "missing user_id" in response.json()["detail"]
 
 
 class TestTokenClaims:
@@ -172,13 +168,13 @@ class TestTokenClaims:
         username = "testuser"
         scope = "all"
 
-        token = create_access_token(username=username, scope=scope)
+        token = create_access_token(username=username, scope=scope, user_id=1)
 
-        # Decode without verification to inspect claims
+        # Decode without audience verification to inspect claims
         from jose import jwt
         from app.utils.oauth_utils import SECRET_KEY, ALGORITHM
 
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_aud": False})
 
         # Check standard claims
         assert "sub" in payload
@@ -217,12 +213,12 @@ class TestTokenClaims:
 
     def test_token_roles(self):
         """Test that token contains proper role structure"""
-        token = create_access_token(username="testuser", scope="all")
+        token = create_access_token(username="testuser", scope="all", user_id=1)
 
         from jose import jwt
         from app.utils.oauth_utils import SECRET_KEY, ALGORITHM
 
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM], options={"verify_aud": False})
 
         # Check realm_access roles
         assert "realm_access" in payload

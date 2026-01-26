@@ -16,7 +16,7 @@ router = APIRouter()
 @router.get("/export/job", status_code=status.HTTP_200_OK)
 async def export_jobs(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Export all job data to a CSV file.
@@ -29,7 +29,7 @@ async def export_jobs(
             - job_export_dir: The directory path where the file was saved
             - job_export_file: The filename of the exported CSV
     """
-    user_id = current_user.get("user_id")
+
     try:
         # Execute the query to get all job data for this user
         query = text("""
@@ -109,7 +109,7 @@ async def export_jobs(
 @router.get("/export/contacts", status_code=status.HTTP_200_OK)
 async def export_contacts(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Export all contact data to a CSV file.
@@ -122,7 +122,7 @@ async def export_contacts(
             - contact_export_dir: The directory path where the file was saved
             - contact_export_file: The filename of the exported CSV
     """
-    user_id = current_user.get("user_id")
+
     try:
         # Execute the query to get all contact data for this user
         query = text("""
@@ -199,7 +199,7 @@ async def export_contacts(
 @router.get("/export/notes", status_code=status.HTTP_200_OK)
 async def export_notes(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Export all note data to a CSV file.
@@ -212,7 +212,7 @@ async def export_notes(
             - note_export_dir: The directory path where the file was saved
             - note_export_file: The filename of the exported CSV
     """
-    user_id = current_user.get("user_id")
+
     try:
         # Execute the query to get all note data for this user
         query = text("""
@@ -289,7 +289,7 @@ async def export_notes(
 @router.get("/export/calendar", status_code=status.HTTP_200_OK)
 async def export_calendar(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Export all calendar data to a CSV file.
@@ -302,7 +302,7 @@ async def export_calendar(
             - calendar_export_dir: The directory path where the file was saved
             - calendar_export_file: The filename of the exported CSV
     """
-    user_id = current_user.get("user_id")
+
     try:
         # Execute the query to get all calendar data for this user
         query = text("""
@@ -379,7 +379,7 @@ async def export_calendar(
 @router.get("/export/resumes", status_code=status.HTTP_200_OK)
 async def export_resumes(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Export all resume data to a CSV file.
@@ -392,7 +392,7 @@ async def export_resumes(
             - resume_export_dir: The directory path where the file was saved
             - resume_export_file: The filename of the exported CSV
     """
-    user_id = current_user.get("user_id")
+
     try:
         # Execute the query to get all resume data for this user
         query = text("""

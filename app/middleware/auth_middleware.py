@@ -20,7 +20,7 @@ async def get_current_user(
         credentials: Bearer token from Authorization header
 
     Returns:
-        Dict containing decoded token payload
+        string for the user_id value
 
     Raises:
         HTTPException: If token is missing or invalid
@@ -53,30 +53,45 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Invalid token: missing user_id")
 
     # Return the full payload dict so callers can use payload.get("user_id")
-    return payload
+    return user_id
 
-
-async def get_current_user_optional(
+async def get_jwt_payload(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
-) -> Optional[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """
-    Optional authentication dependency - does not raise error if token is missing
+    Dependency to validate JWT token and extract user information
 
     Args:
         credentials: Bearer token from Authorization header
 
     Returns:
-        Dict containing decoded token payload, or None if not authenticated
+        Dict containing decoded token payload
+
+    Raises:
+        HTTPException: If token is missing or invalid
     """
     if not credentials:
-        return None
+        logger.warning("Missing authorization header")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     token = credentials.credentials
+
+    # Verify and decode token
     payload = verify_access_token(token)
 
-    if payload:
-        logger.debug("User authenticated (optional)", username=payload.get("preferred_username"))
+    if not payload:
+        logger.warning("Invalid token")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
+    # Return the full payload dict so callers can use payload.get("user_id")
     return payload
 
 
@@ -90,7 +105,7 @@ def require_scope(required_scope: str):
     Returns:
         Dependency function that validates scope
     """
-    async def scope_checker(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    async def scope_checker(current_user: dict = Depends(get_jwt_payload)) -> Dict[str, Any]:
         token_scope = current_user.get("scope", "")
 
         if required_scope not in token_scope.split():

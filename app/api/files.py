@@ -16,7 +16,7 @@ router = APIRouter()
 async def download_cover_letter(
     file_name: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Serve a cover letter file for download with standardized naming.
@@ -30,7 +30,7 @@ async def download_cover_letter(
     Returns:
         FileResponse with the file using standardized naming
     """
-    user_id = current_user.get("user_id")
+
     try:
         # Verify the cover letter belongs to the user
         query = text("""
@@ -86,7 +86,7 @@ async def download_cover_letter(
 async def download_resume(
     file_name: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Serve a resume file for download with standardized naming.
@@ -100,7 +100,7 @@ async def download_resume(
     Returns:
         FileResponse with the file using standardized naming
     """
-    user_id = current_user.get("user_id")
+
     try:
         # Verify the resume belongs to the user
         query = text("""
@@ -155,7 +155,7 @@ async def download_resume(
 @router.get("/files/exports/{file_name}")
 async def download_export(
     file_name: str,
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Serve an export CSV file for download.
@@ -166,7 +166,7 @@ async def download_export(
     Returns:
         FileResponse with the CSV file
     """
-    user_id = current_user.get("user_id")
+
     try:
         # Export files are named with date, not user-specific
         # But we still require authentication to access exports
@@ -203,7 +203,7 @@ async def download_export(
 async def serve_logo(
     file_name: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Serve a company logo file.
@@ -214,7 +214,7 @@ async def serve_logo(
     Returns:
         FileResponse with the logo image
     """
-    user_id = current_user.get("user_id")
+
     try:
         # Verify the logo belongs to a company owned by user
         query = text("""
@@ -273,7 +273,7 @@ async def serve_logo(
 async def download_report(
     file_name: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    user_id: str = Depends(get_current_user)
 ):
     """
     Serve a company report file for download.
@@ -284,7 +284,6 @@ async def download_report(
     Returns:
         FileResponse with the DOCX file
     """
-    user_id = current_user.get("user_id")
     try:
         # Report files are named based on company name
         # Verify the user owns a company with a matching report
