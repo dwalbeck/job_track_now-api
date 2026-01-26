@@ -545,8 +545,7 @@ async def convert_file(
             # For HTML source, check if file exists on disk
             # If not, retrieve from database and write to disk
             if source_format == 'html' and not os.path.exists(input_path):
-                logger.debug(f"HTML file not found on disk, retrieving from database",
-                           resume_id=request.resume_id, file_name=input_file_name)
+                logger.debug(f"HTML file not found on disk, retrieving from database", resume_id=request.resume_id, file_name=input_file_name)
 
                 # Query to get HTML content from resume_detail
                 html_query = text("""
@@ -558,8 +557,7 @@ async def convert_file(
 
                 if not html_result or not html_result.resume_html_rewrite:
                     logger.error(f"No HTML content found in database", resume_id=request.resume_id)
-                    raise HTTPException(status_code=404,
-                                      detail=f"No HTML content found for resume_id: {request.resume_id}")
+                    raise HTTPException(status_code=404, detail=f"No HTML content found for resume_id: {request.resume_id}")
 
                 # Create directory if it doesn't exist
                 os.makedirs(os.path.dirname(input_path), exist_ok=True)
@@ -578,14 +576,15 @@ async def convert_file(
             logger.error(f"Unsupported source format", source_format=source_format)
             raise HTTPException(status_code=400, detail=f"Unsupported source format: {source_format}")
 
-        logger.debug(f"Conversion paths determined", input_path=input_path, output_path=output_path)
+        logger.debug(f"Conversion paths determined - starting conversion", input_path=input_path, output_path=output_path)
 
         # Call the conversion method
         conversion_success = Conversion.convert_file(
             source_format=source_format,
             target_format=target_format,
             input_path=input_path,
-            output_path=output_path
+            output_path=output_path,
+	        user_id=user_id
         )
 
         if not conversion_success:
