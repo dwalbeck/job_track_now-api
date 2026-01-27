@@ -130,7 +130,8 @@ async def download_resume(
         tmp_path, download_name, mime_type = create_standardized_download_file(
             source_file_path=file_path,
             file_type='resume',
-            db=db
+            db=db,
+            user_id=user_id
         )
 
         logger.info(f"Serving resume file",
