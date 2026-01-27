@@ -1811,10 +1811,28 @@ class Conversion:
                 logger.error(error_msg, input=input_path)
                 raise RuntimeError(error_msg)
 
-            # Save result
-            result_container['result'].file.save(output_path)
+            # Save result - try file first, then files[0] if file doesn't work
+            result = result_container['result']
+            logger.debug(f"ConvertAPI result type", result_type=type(result).__name__,
+                        has_file=hasattr(result, 'file'), has_files=hasattr(result, 'files'))
 
-            logger.info(f"HTML to DOCX conversion (ConvertAPI) successful", input=input_path, output=output_path)
+            if hasattr(result, 'file') and result.file:
+                result.file.save(output_path)
+                logger.debug(f"Saved using result.file")
+            elif hasattr(result, 'files') and result.files:
+                result.files[0].save(output_path)
+                logger.debug(f"Saved using result.files[0]")
+            else:
+                raise RuntimeError("ConvertAPI result has no file or files attribute")
+
+            # Verify file was actually saved
+            if not os.path.exists(output_path):
+                logger.error(f"File not found after save", output_path=output_path)
+                raise RuntimeError(f"ConvertAPI save completed but file not found at {output_path}")
+
+            file_size = os.path.getsize(output_path)
+            logger.info(f"HTML to DOCX conversion (ConvertAPI) successful",
+                       input=input_path, output=output_path, file_size=file_size)
             return True
 
         except (TimeoutError, RuntimeError):

@@ -587,6 +587,28 @@ async def convert_file(
             logger.error(f"Conversion failed", resume_id=request.resume_id)
             raise HTTPException(status_code=500, detail="File conversion failed")
 
+        # Update resume_detail with the converted filename so it can be downloaded
+        # Only for binary output formats (docx, odt, pdf) that need to be downloaded via /files/resumes
+        if target_format in ['docx', 'odt', 'pdf']:
+            update_query = text("""
+                UPDATE resume_detail
+                SET rewrite_file_name = :file_name
+                WHERE resume_id = :resume_id
+            """)
+            db.execute(update_query, {
+                "file_name": output_file_name,
+                "resume_id": request.resume_id
+            })
+            db.commit()
+            logger.debug(f"Updated resume_detail with converted filename",
+                        resume_id=request.resume_id, file_name=output_file_name)
+
+            # Verify file was actually saved to disk
+            if not os.path.exists(output_path):
+                logger.error(f"Converted file not found on disk after conversion",
+                            output_path=output_path)
+                raise HTTPException(status_code=500, detail="File conversion succeeded but file not saved to disk")
+
         # Read file content for md and html targets
         file_content = ""
         if target_format in ['md', 'html']:

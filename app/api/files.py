@@ -103,9 +103,12 @@ async def download_resume(
 
     try:
         # Verify the resume belongs to the user
+        # Check both resume.file_name (original) and resume_detail.rewrite_file_name (converted)
         query = text("""
-            SELECT resume_id FROM resume
-            WHERE file_name = :file_name AND user_id = :user_id
+            SELECT r.resume_id FROM resume r
+            LEFT JOIN resume_detail rd ON r.resume_id = rd.resume_id
+            WHERE r.user_id = :user_id
+              AND (r.file_name = :file_name OR rd.rewrite_file_name = :file_name)
         """)
         result = db.execute(query, {"file_name": file_name, "user_id": user_id}).first()
         if not result:

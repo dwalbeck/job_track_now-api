@@ -113,7 +113,6 @@ async def get_week_calendar(
     """
     Get calendar appointments for a specific week.
     """
-    user_id = current_user.get("user_id")
     if not validate_week_start(date):
         raise HTTPException(status_code=400, detail="Date must be a Monday (first day of the week)")
 

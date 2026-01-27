@@ -39,7 +39,7 @@ class TestGetJobAppointments:
         test_db.execute(text("""
             INSERT INTO calendar (calendar_id, user_id, job_id, calendar_type, start_date, start_time, end_date, end_time, participant, calendar_desc, outcome_score)
             VALUES
-                (1, :user_id, 1, 'phone call', '2025-01-15', '10:00:00', '2025-01-15', '10:30:00', ARRAY['John Doe'], 'Phone screening', 8),
+                (1, :user_id, 1, 'phone_call', '2025-01-15', '10:00:00', '2025-01-15', '10:30:00', ARRAY['John Doe'], 'Phone screening', 8),
                 (2, :user_id, 1, 'interview', '2025-01-20', '14:00:00', '2025-01-20', '15:00:00', ARRAY['Jane Smith', 'Bob Jones'], 'Technical interview', 9)
         """), {"user_id": user_id})
         test_db.commit()
@@ -70,7 +70,7 @@ class TestGetMonthCalendar:
         test_db.execute(text("""
             INSERT INTO calendar (calendar_id, user_id, job_id, calendar_type, start_date, start_time)
             VALUES
-                (1, :user_id, 1, 'phone call', '2025-01-15', '10:00:00'),
+                (1, :user_id, 1, 'phone_call', '2025-01-15', '10:00:00'),
                 (2, :user_id, 1, 'interview', '2025-01-20', '14:00:00'),
                 (3, :user_id, 1, 'interview', '2025-02-05', '11:00:00')
         """), {"user_id": user_id})
@@ -99,7 +99,7 @@ class TestGetMonthCalendar:
         test_db.execute(text("""
             INSERT INTO calendar (calendar_id, user_id, job_id, calendar_type, start_date, start_time)
             VALUES
-                (1, :user_id, 1, 'phone call', '2025-01-15', '10:00:00'),
+                (1, :user_id, 1, 'phone_call', '2025-01-15', '10:00:00'),
                 (2, :user_id, 2, 'interview', '2025-01-20', '14:00:00')
         """), {"user_id": user_id})
         test_db.commit()
@@ -135,7 +135,7 @@ class TestGetWeekCalendar:
         test_db.execute(text("""
             INSERT INTO calendar (calendar_id, user_id, job_id, calendar_type, start_date, start_time)
             VALUES
-                (1, :user_id, 1, 'phone call', '2025-01-13', '10:00:00'),
+                (1, :user_id, 1, 'phone_call', '2025-01-13', '10:00:00'),
                 (2, :user_id, 1, 'interview', '2025-01-15', '14:00:00'),
                 (3, :user_id, 1, 'interview', '2025-01-20', '11:00:00')
         """), {"user_id": user_id})
@@ -174,7 +174,7 @@ class TestGetDayCalendar:
         test_db.execute(text("""
             INSERT INTO calendar (calendar_id, user_id, job_id, calendar_type, start_date, start_time)
             VALUES
-                (1, :user_id, 1, 'phone call', '2025-01-15', '10:00:00'),
+                (1, :user_id, 1, 'phone_call', '2025-01-15', '10:00:00'),
                 (2, :user_id, 1, 'interview', '2025-01-15', '14:00:00'),
                 (3, :user_id, 1, 'interview', '2025-01-16', '11:00:00')
         """), {"user_id": user_id})
@@ -220,7 +220,7 @@ class TestCreateOrUpdateCalendar:
 
         calendar_data = {
             "job_id": 1,
-            "calendar_type": "phone call",
+            "calendar_type": "phone_call",
             "start_date": "2025-01-15",
             "start_time": "10:00:00",
             "end_date": "2025-01-15",
@@ -240,7 +240,7 @@ class TestCreateOrUpdateCalendar:
         # Verify event was created
         event = test_db.execute(text(f"SELECT * FROM calendar WHERE calendar_id = {data['calendar_id']}")).first()
         assert event.job_id == 1
-        assert event.calendar_type == 'phone call'
+        assert event.calendar_type == 'phone_call'
         assert str(event.start_date) == '2025-01-15'
 
         mock_update_activity.assert_called_once_with(test_db, 1)
@@ -258,7 +258,7 @@ class TestCreateOrUpdateCalendar:
         """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO calendar (calendar_id, user_id, job_id, calendar_type, start_date, start_time, outcome_score)
-            VALUES (1, :user_id, 1, 'phone call', '2025-01-15', '10:00:00', 5)
+            VALUES (1, :user_id, 1, 'phone_call', '2025-01-15', '10:00:00', 5)
         """), {"user_id": user_id})
         test_db.commit()
 
@@ -285,7 +285,7 @@ class TestCreateOrUpdateCalendar:
         """Test creating calendar event for non-existent job."""
         calendar_data = {
             "job_id": 999,
-            "calendar_type": "phone call",
+            "calendar_type": "phone_call",
             "start_date": "2025-01-15",
             "start_time": "10:00:00"
         }
@@ -298,7 +298,7 @@ class TestCreateOrUpdateCalendar:
     def test_create_calendar_missing_job_id(self, client, test_db):
         """Test creating calendar event without job_id."""
         calendar_data = {
-            "calendar_type": "phone call",
+            "calendar_type": "phone_call",
             "start_date": "2025-01-15",
             "start_time": "10:00:00"
         }
@@ -380,7 +380,7 @@ class TestDeleteCalendarAppointment:
         """), {"user_id": user_id})
         test_db.execute(text("""
             INSERT INTO calendar (calendar_id, user_id, job_id, calendar_type, start_date, start_time)
-            VALUES (1, :user_id, 1, 'phone call', '2025-01-15', '10:00:00')
+            VALUES (1, :user_id, 1, 'phone_call', '2025-01-15', '10:00:00')
         """), {"user_id": user_id})
         test_db.commit()
 

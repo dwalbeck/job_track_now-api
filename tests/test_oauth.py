@@ -34,17 +34,21 @@ def setup_test_user(test_db):
     """Setup test user with credentials in users table"""
     from app.utils.password import hash_password
 
+    # Cleanup any existing oauth codes before each test
+    test_db.execute(text("DELETE FROM oauth_codes"))
+    test_db.commit()
+
     # Hash the test password
     hashed_password = hash_password("testpass123")
 
     test_db.execute(text("""
         INSERT INTO users (first_name, last_name, login, passwd, email, is_admin)
-        VALUES ('John', 'Doe', 'oauthoauthtestuser', :passwd, 'john@example.com', false)
+        VALUES ('John', 'Doe', 'oauthtestuser', :passwd, 'john@example.com', false)
         ON CONFLICT DO NOTHING
     """), {"passwd": hashed_password})
 
     # Get the user_id
-    result = test_db.execute(text("SELECT user_id FROM users WHERE login = 'oauthoauthtestuser'")).first()
+    result = test_db.execute(text("SELECT user_id FROM users WHERE login = 'oauthtestuser'")).first()
     if result:
         user_id = result.user_id
         # Create user settings
@@ -84,7 +88,7 @@ class TestOAuthUtils:
 
     def test_store_and_retrieve_authorization_code(self):
         """Test storing and retrieving authorization code"""
-        code = "test_auth_code_123"
+        code = generate_authorization_code()  # Use unique code each time
         username = "oauthtestuser"
         redirect_uri = "http://localhost:3000/callback"
         code_challenge = "test_challenge"
@@ -121,7 +125,7 @@ class TestOAuthUtils:
 
     def test_mark_code_as_used(self):
         """Test marking authorization code as used"""
-        code = "test_auth_code_456"
+        code = generate_authorization_code()  # Use unique code each time
         store_authorization_code(
             code=code,
             username="oauthtestuser",
