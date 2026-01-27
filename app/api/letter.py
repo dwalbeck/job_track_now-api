@@ -377,39 +377,24 @@ async def write_cover_letter(
                 detail=f"Cover letter with ID {cover_id} not found or missing required data"
             )
 
-        # Extract data from query result
-        letter_tone = result.letter_tone
-        letter_length = result.letter_length
-        instruction = result.instruction
-        job_desc = result.job_desc
-        company = result.company
-        job_title = result.job_title
-        resume_md_rewrite = result.resume_md_rewrite
-        first_name = result.first_name
-        last_name = result.last_name
-        city = result.city
-        state = result.state
-        email = result.email
-        phone = result.phone
-
-        logger.info(f"Generating cover letter", cover_id=cover_id, company=company, job_title=job_title)
+        logger.info(f"Generating cover letter", cover_id=cover_id, company=result.company, job_title=result.job_title)
 
         # Initialize AI agent and generate cover letter
         ai_agent = AiAgent(db)
         ai_result = ai_agent.write_cover_letter(
-            letter_tone=letter_tone,
-            letter_length=letter_length,
-            instruction=instruction,
-            job_desc=job_desc,
-            company=company,
-            job_title=job_title,
-            resume_md_rewrite=resume_md_rewrite,
-            first_name=first_name,
-            last_name=last_name,
-            city=city,
-            state=state,
-            email=email,
-            phone=phone
+            letter_tone=result.letter_tone,
+            letter_length=result.letter_length,
+            instruction=result.instruction,
+            job_desc=result.job_desc,
+            company=result.company,
+            job_title=result.job_title,
+            resume_md_rewrite=result.resume_md_rewrite,
+            first_name=result.first_name,
+            last_name=result.last_name,
+            city=result.city,
+            state=result.state,
+            email=result.email,
+            phone=result.phone
         )
 
         letter_content = ai_result.get('letter_content')
