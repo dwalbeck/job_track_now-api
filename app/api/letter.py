@@ -333,6 +333,7 @@ async def write_cover_letter(
     Args:
         request_data: Dictionary containing cover_id
         db: Database session
+        user_id: Current user from JWT
 
     Returns:
         Dictionary containing the generated letter_content
@@ -357,14 +358,14 @@ async def write_cover_letter(
                    j.company, j.job_title, rd.resume_md_rewrite,
                    u.first_name, u.last_name, a.city, a.state, u.email, ud.phone
             FROM cover_letter cl
-            JOIN job j ON (cl.job_id = j.job_id)
-            JOIN job_detail jd ON (j.job_id = jd.job_id)
-            JOIN resume r ON (cl.resume_id = r.resume_id)
-            JOIN resume_detail rd ON (r.resume_id = rd.resume_id)
-            CROSS JOIN users u
-            LEFT JOIN user_detail ud ON (u.user_id = ud.user_id)
-            LEFT JOIN user_address ua ON (u.user_id = ua.user_id AND ua.is_default = true)
-            LEFT JOIN address a ON (ua.address_id = a.address_id)
+	            JOIN job j ON (cl.job_id = j.job_id)
+	            JOIN job_detail jd ON (j.job_id = jd.job_id)
+	            JOIN resume r ON (cl.resume_id = r.resume_id)
+	            JOIN resume_detail rd ON (r.resume_id = rd.resume_id)
+	            CROSS JOIN users u
+	            LEFT JOIN user_detail ud ON (u.user_id = ud.user_id)
+	            LEFT JOIN user_address ua ON (u.user_id = ua.user_id AND ua.is_default = true)
+	            LEFT JOIN address a ON (ua.address_id = a.address_id)
             WHERE cl.cover_id = :cover_id AND cl.user_id = :user_id AND u.user_id = :user_id
         """)
 
@@ -462,6 +463,7 @@ async def convert_cover_letter(
     Args:
         request_data: Dictionary containing cover_id and format
         db: Database session
+        user_id: Current user from JWT
 
     Returns:
         Dictionary containing the generated file_name
@@ -510,14 +512,7 @@ async def convert_cover_letter(
                 detail="Cover letter content is empty. Generate content first using /letter/write"
             )
 
-        # Create filename: <company>-<job_title>.docx with spaces replaced by underscores, lowercase
-        # Remove invalid filesystem characters
-        import re
-        file_name = f"{company}-{job_title}.docx"
-        # Replace invalid characters with underscore
-        file_name = re.sub(r'[/\\:*?"<>|]', '_', file_name)
-        # Replace spaces with underscores and convert to lowercase
-        file_name = file_name.replace(" ", "_").lower()
+        file_name = Conversion._set_file(company, job_title, 'docx')
 
         logger.info(f"Converting cover letter to DOCX", cover_id=cover_id, file_name=file_name)
 

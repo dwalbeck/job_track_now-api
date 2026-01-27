@@ -16,7 +16,7 @@ router = APIRouter()
 async def download_cover_letter(
     file_name: str,
     db: Session = Depends(get_db),
-    user_id: str = Depends(get_current_user)
+    user_id: int = Depends(get_current_user)
 ):
     """
     Serve a cover letter file for download with standardized naming.
@@ -26,6 +26,8 @@ async def download_cover_letter(
 
     Args:
         file_name: Name of the original file to download
+        db: database instance
+        user_id: Current user from jWT
 
     Returns:
         FileResponse with the file using standardized naming
@@ -57,7 +59,8 @@ async def download_cover_letter(
         tmp_path, download_name, mime_type = create_standardized_download_file(
             source_file_path=file_path,
             file_type='cover_letter',
-            db=db
+            db=db,
+	        user_id=user_id
         )
 
         logger.info(f"Serving cover letter file",
