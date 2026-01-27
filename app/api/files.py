@@ -86,7 +86,7 @@ async def download_cover_letter(
 async def download_resume(
     file_name: str,
     db: Session = Depends(get_db),
-    user_id: str = Depends(get_current_user)
+    user_id: int = Depends(get_current_user)
 ):
     """
     Serve a resume file for download with standardized naming.
