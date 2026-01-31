@@ -1,16 +1,15 @@
 import os
-from typing import List, Dict, Any
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from ..core.database import get_db
 from ..core.config import settings
-from ..models.models import CoverLetter as CoverLetterModel
 from ..schemas.letter import Letter, LetterCreate, LetterUpdate, LetterListItem
 from ..utils.logger import logger
 from ..utils.ai_agent import AiAgent
-from ..utils.conversion import Conversion
+from ..utils.file_helpers import set_filename
 from ..utils.job_helpers import update_job_activity
 from ..middleware.auth_middleware import get_current_user
 
@@ -94,7 +93,7 @@ async def get_letter_list(
             FROM cover_letter cl
             JOIN job j ON (cl.job_id = j.job_id)
             WHERE cl.cover_id > 0 AND cl.letter_active = true AND cl.user_id = :user_id
-            ORDER BY cl.letter_created DESC, j.company ASC
+            ORDER BY cl.letter_created DESC, j.company
         """)
 
         results = db.execute(query, {"user_id": user_id}).fetchall()
@@ -137,6 +136,7 @@ async def save_letter(
     Args:
         letter_data: Cover letter data including all fields
         db: Database session
+        user_id: Current User ID from JWT
 
     Returns:
         Success status with cover_id
@@ -186,12 +186,6 @@ async def save_letter(
                 "file_name": letter_data.get('file_name')
             })
             db.commit()
-
-            if result.rowcount == 0:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Cover letter with ID {cover_id} not found"
-                )
 
             # Update job activity
             job_id = letter_data.get('job_id')
@@ -423,13 +417,13 @@ async def write_cover_letter(
     except HTTPException:
         raise
     except ValueError as e:
-        logger.error(f"AI processing error", cover_id=cover_id, error=str(e))
+        logger.error(f"AI processing error", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"AI processing error: {str(e)}"
         )
     except Exception as e:
-        logger.error(f"Error generating cover letter", cover_id=cover_id, error=str(e))
+        logger.error(f"Error generating cover letter", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error generating cover letter: {str(e)}"
@@ -497,7 +491,7 @@ async def convert_cover_letter(
                 detail="Cover letter content is empty. Generate content first using /letter/write"
             )
 
-        file_name = Conversion._set_file(company, job_title, 'docx')
+        file_name = set_filename(company, job_title, 'docx')
 
         logger.info(f"Converting cover letter to DOCX", cover_id=cover_id, file_name=file_name)
 

@@ -48,13 +48,14 @@ JOB POSTING:
     
 3. **Company Logo**
     - Very important to get the company logo, as it's used in recognition and verifying it's the correct company and much more
-    - The company logo is generally found on the company website, usually within the website header, and most commonly near the top left of the page
+    - The company logo can be found on the company website, usually found within the web page header, and most commonly near the top left on the main page
     - Acceptable image formats include: png, jpg, gif, svg, webp and avif
-    - The company logo is generally also surrounded by an anchor link that points to the website main page
+    - The company logo is generally also surrounded by an anchor link that points to the website domain or "/", which is the website main page
+    - Search through the source code from the home page using a case-insensitive search for "logo" will likely find the right HTML element or be close to it
     - Do not use sources that are not directly owned and operated by any entity other than the company being searched
+    - Do not make up an invalid logo URL. The logo URL must be copied directly from the source code and be able to download the image
     - It is possible that the company logo is simply text of their company name, which even in this case, will generally still use a graphic image for it
-    - The company logo can often be found by searching for the text "logo" (case-insensitive) matched within an element in the class name or any other attribute
-    - The value for the return variable "company_logo_url" should be valid URL that will directly access the company logo to be downloaded
+    - The value for the return variable "company_logo_url" should be a valid URL that will directly access the company logo to be downloaded
     - The value for the return variable "logo_element" should contain the HTML element that the logo was grabbed from
     - The value for the return variable "logo_element2" should contain the HTML element one higher than the logo element and everything it contains
     - Logo verification steps:
@@ -75,43 +76,6 @@ JOB POSTING:
     - JSON must be properly formatted and able to be directly parsed
     - Each object in the array will contain: company_name, website_url, location_city, location_state, linkedin_url, industry, match_score, company_logo_url
     - Do not provide any additional text or explanation beyond specified fields
-
-### Company Logo match examples
-
-```html
-Example 1
-Company Name: Fluxon
-Website URL: https://www.fluxon.com/
-Logo URL: https://www.fluxon.com/_astro/logo-fluxon.D06aLsfY_Z1wb4uX.svg
-Pulled from source code:
-
-<body class="bg-fluxonOffBlack text-fluxonOffWhite" data-astro-cid-sckkx6r4 style="">
-	<div id="transition-overlay" class="active" data-astro-cid-sckkx6r4 style="" data-astro-transition-persist="astro-f5sodjme-1"></div>
-	<header class="header fixed left-[50%] top-12 z-20 flex translate-x-[-50%] transform justify-center [@media(max-width:768px)]:hidden" data-astro-cid-2w66rqv5>
-		<div class="header-container relative rounded-2xl bg-fluxonOffBlack bg-opacity-40" data-astro-cid-2w66rqv5>
-			<div class="relative flex items-center gap-8 py-2 pl-8 pr-2 text-white" data-astro-cid-2w66rqv5>
-				<a href="/" class="w-[5.5rem] max-md:w-[5.75rem]" type="button" data-astro-cid-2w66rqv5>
-					<img src="**/_astro/logo-fluxon.D06aLsfY_Z1wb4uX.svg**" alt="Fluxon logo" loading="eager" data-astro-cid-2w66rqv5="true" decoding="async" fetchpriority="auto" width="88" height="16" class="w-full">
-					</a>
-					<nav class="relative inline-flex gap-2" id="header-nav" data-astro-cid-2w66rqv5>
-```
-
-```html
-Example 2
-Company Name: Fullstream
-Website URL: https://www.fullsteam.com/
-Logo URL: https://lirp.cdn-website.com/343b356b/dms3rep/multi/opt/Logo_2in_2Color-160w.jpg
-Pulled from source code:
-
-<div id="f1f49cb2" class="flex-element group" data-auto="flex-element-group">
-	<div id="10046ac0" class="flex-element widget-wrapper" data-auto="flex-element-widget-wrapper" data-widget-type="image" data-keep-proportion="true" data-external-id="1816843932">
-		<div class="imageWidget align-center u_1816843932" data-element-type="image" data-widget-type="image" id="1816843932" data-binding="">
-			<a href="/" id="1216013614">
-				<img src="**https://lirp.cdn-website.com/343b356b/dms3rep/multi/opt/Logo_2in_2Color-160w.jpg**" alt="Fullsteam logo with teal text and a yellow stylized "steam" graphic." id="1276606281" class="" data-dm-image-path="https://irp.cdn-website.com/343b356b/dms3rep/multi/Logo_2in_2Color.jpg" width="133.98001098632812" height="36.93937683105469" onerror="handleImageLoadError(this)"/>
-			</a>
-		</div>
-
-```
 
 
 # RESPONSE FORMAT:

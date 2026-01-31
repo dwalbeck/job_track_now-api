@@ -1,17 +1,16 @@
-import os
 import re
 import shutil
 import difflib
 from pathlib import Path
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, BackgroundTasks
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import datetime
 
 from ..core.database import get_db
 from ..core.config import settings
+from ..utils.file_helpers import make_unique_resume_filename, clean_filename_part, set_filename
 from ..models.models import Resume, Job, FileFormat, ResumeDetail
 from ..schemas.resume import (
 	Resume as ResumeSchema,
@@ -31,7 +30,6 @@ from ..schemas.resume import (
 )
 from ..utils.ai_agent import AiAgent
 from ..utils.conversion import Conversion
-from ..utils.job_helpers import update_job_activity
 from ..utils.logger import logger
 from ..middleware.auth_middleware import get_current_user
 
@@ -66,19 +64,6 @@ def _convert_to_markdown(file_name: str, file_format: str) -> str:
 		return Conversion.odtToMd(file_name)
 	else:
 		raise ValueError(f"Unsupported file format: {file_format}")
-
-
-def clean_filename_part(text: str) -> str:
-	"""
-	Clean text for use in filename: lowercase, replace spaces with underscores.
-	"""
-	# Remove special characters except spaces and hyphens
-	cleaned = re.sub(r'[^\w\s-]', '', text).strip()
-	# Replace spaces and hyphens with underscores
-	cleaned = re.sub(r'[-\s]+', '_', cleaned)
-	# Convert to lowercase
-	return cleaned.lower()
-
 
 def generate_text_diff(original_text: str, rewritten_text: str) -> List[str]:
 	"""
@@ -207,61 +192,6 @@ def make_unique_resume_title(base_title: str, db: Session, user_id: int) -> str:
 		# Safety check to prevent infinite loop
 		if counter > 1000:
 			raise ValueError(f"Could not generate unique resume title after {counter} attempts")
-
-
-def make_unique_filename(base_filename: str, db: Session, user_id: int) -> str:
-	"""
-	Ensure filename is unique by adding timestamp or incrementing number if needed.
-
-	Args:
-		base_filename: The desired filename (e.g., "resume.pdf")
-		db: Database session
-		user_id: The user's ID
-
-	Returns:
-		Unique filename that doesn't exist in the database for this user
-	"""
-	# Check if base filename already exists for this user
-	existing = db.query(Resume).filter(
-		Resume.file_name == base_filename,
-		Resume.user_id == user_id
-	).first()
-
-	if not existing:
-		return base_filename
-
-	# Split into base and extension
-	parts = base_filename.rsplit('.', 1)
-	if len(parts) == 2:
-		base_name, extension = parts
-	else:
-		base_name = base_filename
-		extension = ""
-
-	# Try adding date
-	from datetime import datetime
-	date_stamp = datetime.utcnow().strftime('%Y_%m_%d')
-	timestamped_name = f"{base_name}_{date_stamp}.{extension}" if extension else f"{base_name}_{date_stamp}"
-
-	existing = db.query(Resume).filter(
-		Resume.file_name == timestamped_name,
-		Resume.user_id == user_id
-	).first()
-	if not existing:
-		return timestamped_name
-
-	# If date also exists (unlikely), add incrementing number
-	counter = 1
-	while True:
-		numbered_name = f"{base_name}_{date_stamp}_{counter}.{extension}" if extension else f"{base_name}_{date_stamp}_{counter}"
-		existing = db.query(Resume).filter(
-			Resume.file_name == numbered_name,
-			Resume.user_id == user_id
-		).first()
-		if not existing:
-			return numbered_name
-		counter += 1
-
 
 @router.get("/resume/baseline")
 async def get_baseline_resumes(
@@ -464,7 +394,7 @@ async def create_or_update_resume(
 	job_id: Optional[int] = Form(None),
 	resume_id: Optional[int] = Form(None),
 	db: Session = Depends(get_db),
-	user_id: str = Depends(get_current_user)
+	user_id: int = Depends(get_current_user)
 ):
 	"""
 	Create a new resume or update an existing one.
@@ -486,6 +416,7 @@ async def create_or_update_resume(
 	# Determine original_format from upload_file if present
 	original_format = None
 	if upload_file and upload_file.filename:
+		file_name = upload_file.filename
 		extension = get_file_extension_from_filename(upload_file.filename)
 		if extension:
 			original_format = validate_file_format(extension)
@@ -498,10 +429,8 @@ async def create_or_update_resume(
 		)
 
 	# Handle is_baseline logic based on job_id
-	if job_id:
+	if job_id and is_baseline:
 		is_baseline = False
-	else:
-		is_baseline = True
 
 	# Verify job exists and belongs to user if job_id is provided
 	if job_id:
@@ -519,29 +448,21 @@ async def create_or_update_resume(
 			# Use company-job_title for job-specific resumes
 			job = db.query(Job).filter(Job.job_id == job_id, Job.user_id == user_id).first()
 			if job:
-				company_part = clean_filename_part(job.company) if job.company else "unknown"
-				job_title_part = clean_filename_part(job.job_title) if job.job_title else "unknown"
-				calculated_file_name = f"{company_part}-{job_title_part}.{original_format}"
+				calculated_file_name = set_filename(job.company, job.job_title, original_format)
 
 	# Ensure filename is unique (only for new resumes)
 	if not is_update and calculated_file_name:
-		calculated_file_name = make_unique_filename(calculated_file_name, db, user_id)
+		calculated_file_name = make_unique_resume_filename(calculated_file_name, db, user_id)
 
 	if is_update:
 		# Update existing resume - ensure it belongs to user
-		resume = db.query(Resume).filter(
-			Resume.resume_id == resume_id,
-			Resume.user_id == user_id
-		).first()
+		resume = db.query(Resume).filter(Resume.resume_id == resume_id, Resume.user_id == user_id).first()
 		if not resume:
 			raise HTTPException(status_code=404, detail="Resume not found")
 
 		# If setting this resume as default, first unset all other defaults for this user
 		if is_default:
-			db.query(Resume).filter(
-				Resume.resume_id != resume_id,
-				Resume.user_id == user_id
-			).update(
+			db.query(Resume).filter(Resume.resume_id != resume_id, Resume.user_id == user_id).update(
 				{"is_default": False},
 				synchronize_session=False
 			)
@@ -560,52 +481,8 @@ async def create_or_update_resume(
 		if original_format:
 			resume.original_format = original_format
 
-		if calculated_file_name:
-			resume.file_name = calculated_file_name
-
 		# Set resume_updated timestamp
 		resume.resume_updated = datetime.utcnow()
-
-		# Save uploaded file if present
-		if upload_file and upload_file.filename:
-			# Create directory path
-			base_path = Path(settings.resume_dir)
-			base_path.mkdir(parents=True, exist_ok=True)
-
-			file_path = base_path / calculated_file_name
-
-			# Write file
-			with open(file_path, "wb") as f:
-				content = await upload_file.read()
-				f.write(content)
-
-			'''
-			# Convert to markdown and create/update resume_detail
-			try:
-				markdown_content = _convert_to_markdown(calculated_file_name, original_format)
-
-				# Check if resume_detail exists
-				existing_detail = db.query(ResumeDetail).filter(
-					ResumeDetail.resume_id == resume.resume_id
-				).first()
-
-				if existing_detail:
-					# Update existing detail
-					existing_detail.resume_markdown = markdown_content
-				else:
-					# Create new detail
-					new_detail = ResumeDetail(
-						resume_id=resume.resume_id,
-						resume_markdown=markdown_content
-					)
-					db.add(new_detail)
-			except Exception as e:
-				logger.error(f"Error converting resume to markdown", resume_id=resume.resume_id, error=str(e))
-				raise HTTPException(
-					status_code=500,
-					detail=f"Error processing resume: Failed to convert to Markdown: {str(e)}"
-				)
-			'''
 
 	else:
 		# Create new resume
@@ -639,36 +516,10 @@ async def create_or_update_resume(
 				content = await upload_file.read()
 				f.write(content)
 
-			'''
-			# Convert to markdown and create resume_detail
-			try:
-				markdown_content = _convert_to_markdown(calculated_file_name, original_format)
-
-				# Create new detail record
-				new_detail = ResumeDetail(
-					resume_id=new_resume.resume_id,
-					resume_markdown=markdown_content
-				)
-				db.add(new_detail)
-			except Exception as e:
-				logger.error(f"Error converting resume to markdown", resume_id=new_resume.resume_id, error=str(e))
-				raise HTTPException(
-					status_code=500,
-					detail=f"Error processing resume: Failed to convert to Markdown: {str(e)}"
-				)
-			'''
-
 		resume = new_resume
 
 	db.commit()
 	db.refresh(resume)
-
-	# Update job activity if job_id is provided
-	if job_id:
-		try:
-			update_job_activity(db, job_id)
-		except Exception as e:
-			logger.warning(f"Failed to update job activity", job_id=job_id, error=str(e))
 
 	return {"status": "success", "resume_id": resume.resume_id}
 
@@ -677,7 +528,7 @@ async def create_or_update_resume(
 async def update_resume_json(
 	resume_data: ResumeUpdate,
 	db: Session = Depends(get_db),
-	user_id: str = Depends(get_current_user)
+	user_id: int = Depends(get_current_user)
 ):
 	"""
 	Update an existing resume using JSON payload.
@@ -691,7 +542,7 @@ async def update_resume_json(
 	logger.info("Updating resume via PUT", resume_id=resume_data.resume_id, user_id=user_id)
 
 	# Check if resume exists and belongs to user
-	resume_query = text("SELECT resume_id FROM resume WHERE resume_id = :resume_id AND user_id = :user_id")
+	resume_query = text("SELECT resume_id, job_id FROM resume WHERE resume_id = :resume_id AND user_id = :user_id")
 	existing = db.execute(resume_query, {"resume_id": resume_data.resume_id, "user_id": user_id}).first()
 
 	if not existing:
@@ -705,14 +556,6 @@ async def update_resume_json(
 		update_fields.append("resume_title = :resume_title")
 		params["resume_title"] = resume_data.resume_title
 
-	if resume_data.file_name is not None:
-		update_fields.append("file_name = :file_name")
-		params["file_name"] = resume_data.file_name
-
-	if resume_data.is_baseline is not None:
-		update_fields.append("is_baseline = :is_baseline")
-		params["is_baseline"] = resume_data.is_baseline
-
 	if resume_data.is_default is not None:
 		update_fields.append("is_default = :is_default")
 		params["is_default"] = resume_data.is_default
@@ -720,14 +563,6 @@ async def update_resume_json(
 	if resume_data.is_active is not None:
 		update_fields.append("is_active = :is_active")
 		params["is_active"] = resume_data.is_active
-
-	if resume_data.baseline_resume_id is not None:
-		update_fields.append("baseline_resume_id = :baseline_resume_id")
-		params["baseline_resume_id"] = resume_data.baseline_resume_id
-
-	if resume_data.job_id is not None:
-		update_fields.append("job_id = :job_id")
-		params["job_id"] = resume_data.job_id
 
 	if update_fields:
 		update_fields.append("resume_updated = NOW()")
@@ -739,13 +574,6 @@ async def update_resume_json(
 		""")
 		db.execute(update_query, params)
 		db.commit()
-
-	# Update job activity if job_id is in the data
-	if resume_data.job_id:
-		try:
-			update_job_activity(db, resume_data.job_id)
-		except Exception as e:
-			logger.warning(f"Failed to update job activity", job_id=resume_data.job_id, error=str(e))
 
 	logger.info("Resume updated successfully", resume_id=resume_data.resume_id)
 	return {"status": "success", "resume_id": resume_data.resume_id}
@@ -988,21 +816,21 @@ async def clone_resume(
 	if original_detail:
 		# Clone the resume_detail record
 		new_detail = ResumeDetail(
-			resume_id=new_resume.resume_id,
-			resume_markdown=original_detail.resume_markdown,
-			resume_md_rewrite=original_detail.resume_md_rewrite,
-			resume_html=original_detail.resume_html,
-			resume_html_rewrite=original_detail.resume_html_rewrite,
-			position_title=original_detail.position_title,
-			title_line_no=original_detail.title_line_no,
-			keyword_count=original_detail.keyword_count,
-			resume_keyword=original_detail.resume_keyword,
-			keyword_final=original_detail.keyword_final,
-			focus_count=original_detail.focus_count,
-			focus_final=original_detail.focus_final,
-			baseline_score=original_detail.baseline_score,
-			rewrite_score=original_detail.rewrite_score,
-			suggestion=original_detail.suggestion
+			resume_id = new_resume.resume_id,
+			resume_markdown = original_detail.resume_markdown,
+			resume_md_rewrite = original_detail.resume_md_rewrite,
+			resume_html = original_detail.resume_html,
+			resume_html_rewrite = original_detail.resume_html_rewrite,
+			position_title = original_detail.position_title,
+			title_line_no = original_detail.title_line_no,
+			keyword_count = original_detail.keyword_count,
+			resume_keyword = original_detail.resume_keyword,
+			keyword_final = original_detail.keyword_final,
+			focus_count = original_detail.focus_count,
+			focus_final = original_detail.focus_final,
+			baseline_score = original_detail.baseline_score,
+			rewrite_score = original_detail.rewrite_score,
+			suggestion = original_detail.suggestion
 		)
 
 		db.add(new_detail)
@@ -1048,10 +876,7 @@ async def extract_resume_data(
 	"""
 
 	# Verify the resume belongs to user
-	resume = db.query(Resume).filter(
-		Resume.resume_id == extract_request.resume_id,
-		Resume.user_id == user_id
-	).first()
+	resume = db.query(Resume).filter(Resume.resume_id == extract_request.resume_id, Resume.user_id == user_id).first()
 	if not resume:
 		raise HTTPException(status_code=404, detail="Resume not found")
 
@@ -1060,10 +885,14 @@ async def extract_resume_data(
 		ai_agent = AiAgent(db)
 
 		# Extract data using AI
-		result = ai_agent.extract_data(
-			resume_id=extract_request.resume_id,
-			user_id=user_id
-		)
+		result = ai_agent.extract_data(resume_id=extract_request.resume_id)
+
+		# update the resume_detail record with suggestions and position_title
+		rd_query = text("UPDATE resume_detail SET position_title = :title, suggestion = ARRAY[ :suggestions ] WHERE resume_id = :resume_id")
+		resume_detail = db.execute(rd_query, {"title": result['job_title'], "suggestions": result['suggestions'], "resume_id": extract_request.resume_id})
+		if not resume_detail:
+			raise HTTPException(status_code=404, detail="Resume Detail update failed")
+
 
 		# Convert the result to response model
 		return ResumeExtractResponse(
@@ -1085,7 +914,7 @@ async def extract_resume_data(
 async def resume_full(
 	request: ResumeFullRequest,
 	db: Session = Depends(get_db),
-	user_id: str = Depends(get_current_user)
+	user_id: int = Depends(get_current_user)
 ):
 	"""
 	Used to create the initial 'resume' and 'resume_detail' records populated with baseline resume
@@ -1194,7 +1023,7 @@ async def resume_full(
 		# Step 3: Create the resume record
 		base_resume_title = f"{job_result.company} - {job_result.job_title}"
 		unique_resume_title = make_unique_resume_title(base_resume_title, db, user_id)
-		file_name = Conversion._set_file(job_result.company, job_result.job_title, 'html')
+		file_name = set_filename(job_result.company, job_result.job_title, 'html')
 		baseline_score = calculate_keyword_score(job_result.job_keyword, resume_result.resume_markdown)
 
 		new_resume = Resume(
@@ -1297,7 +1126,7 @@ async def get_rewrite_data(
 	Args:
 		job_id: ID of the job
 		db: Database session
-		current_user: User ID pulled from JWT
+		user_id: Current User ID pulled from JWT
 
 	Returns:
 		ResumeRewriteResponse with resume data including HTML, suggestions, and scores
@@ -1339,7 +1168,7 @@ async def rewrite_resume(
 	request: ResumeRewriteRequest,
 	background_tasks: BackgroundTasks,
 	db: Session = Depends(get_db),
-	user_id: str = Depends(get_current_user)
+	user_id: int = Depends(get_current_user)
 ):
 	"""
 	Rewrite resume using baseline resume for a specific job using AI.
@@ -1356,7 +1185,7 @@ async def rewrite_resume(
 		request: ResumeRewriteRequest with job_id
 		background_tasks: FastAPI background tasks
 		db: Database session
-		current_user: User ID from JWT
+		user_id: Current User from JWT
 
 	Returns:
 		202 Accepted with process_id

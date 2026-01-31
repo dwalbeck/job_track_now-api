@@ -1,10 +1,104 @@
 import os
+import re
 import shutil
 import mimetypes
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from .logger import logger
 from .user_helper import get_user_name
+from ..models.models import Resume
+
+
+def change_file_extension(filename: str, middle: str, extension: str) -> str:
+	parts = filename.rsplit('.', 1)
+	file = parts[0]
+	if middle:
+		file = file + middle
+	file = file + '.' + extension
+	return file
+
+
+def set_filename(company: str, title: str, mimetype: str) -> str:
+	"""
+	This will create a filename using the values from the company name and job title
+
+	:param company: Company name
+	:param title: Job position title
+	:param mimetype: File format as the file extension to use
+	:return: filename with extension
+	"""
+
+	file_tmp = company.strip() + '-' + title.strip()
+	# Replace spaces with underscores first
+	file_tmp = file_tmp.replace(' ', '_')
+	# Remove any non-alphanumeric characters except underscores and hyphens
+	file_tmp = re.sub(r'[^a-zA-Z0-9_-]', '', file_tmp)
+	filename = file_tmp + '.' + mimetype
+	return filename
+
+def make_unique_resume_filename(base_filename: str, db: Session, user_id: int) -> str:
+	"""
+	Ensure filename is unique by adding timestamp or incrementing number if needed.
+
+	Args:
+		base_filename: The desired filename (e.g., "resume.pdf")
+		db: Database session
+		user_id: The user's ID
+
+	Returns:
+		Unique filename that doesn't exist in the database for this user
+	"""
+	# Check if base filename already exists for this user
+	existing = db.query(Resume).filter(
+		Resume.file_name == base_filename,
+		Resume.user_id == user_id
+	).first()
+
+	if not existing:
+		return base_filename
+
+	# Split into base and extension
+	parts = base_filename.rsplit('.', 1)
+	if len(parts) == 2:
+		base_name, extension = parts
+	else:
+		base_name = base_filename
+		extension = ""
+
+	# Try adding date
+	from datetime import datetime
+	date_stamp = datetime.utcnow().strftime('%Y%m%d')
+	timestamped_name = f"{base_name}-{date_stamp}.{extension}" if extension else f"{base_name}_{date_stamp}"
+
+	existing = db.query(Resume).filter(
+		Resume.file_name == timestamped_name,
+		Resume.user_id == user_id
+	).first()
+	if not existing:
+		return timestamped_name
+
+	# If date also exists (unlikely), add incrementing number
+	counter = 1
+	while True:
+		numbered_name = f"{base_name}_{date_stamp}_{counter}.{extension}" if extension else f"{base_name}_{date_stamp}_{counter}"
+		existing = db.query(Resume).filter(
+			Resume.file_name == numbered_name,
+			Resume.user_id == user_id
+		).first()
+		if not existing:
+			return numbered_name
+		counter += 1
+
+def clean_filename_part(text: str) -> str:
+	"""
+	Clean text for use in filename: lowercase, replace spaces with underscores.
+	"""
+	# Remove special characters except spaces and hyphens
+	cleaned = re.sub(r'[^\w\s-]', '', text).strip()
+	# Replace spaces and hyphens with underscores
+	cleaned = re.sub(r'[-\s]+', '_', cleaned)
+	# Convert to lowercase
+	return cleaned.lower()
 
 
 def get_personal_name(db: Session, user_id: int) -> tuple[str, str]:

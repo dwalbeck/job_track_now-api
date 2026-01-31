@@ -131,7 +131,7 @@ class AiAgent:
 				- suggestions: list of improvement suggestions
 		"""
 
-		# Get the markdown resume
+		# Get the HTML resume
 		resume_html = self.get_html(resume_id)
 
 		# Load the prompt template
@@ -390,7 +390,7 @@ class AiAgent:
 				raise ValueError(f"Expected list response, got {type(result)}")
 
 			for company_match in result:
-				logger.debug(f"Match entry values", logo_url=company_match.get("company_logo_url"), company_name=company_match.get("company_name"))
+				logger.debug(f"Match entry values", logo_url=company_match.get("company_logo_url"), company_name=company_match.get("company_name"), logo_element2=company_match.get("logo_element2"))
 
 			return result
 

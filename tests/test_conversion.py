@@ -1,9 +1,11 @@
 import pytest
 from unittest.mock import Mock, patch, MagicMock, mock_open
 from pathlib import Path
+from fastapi import Depends
 import os
 import tempfile
 from app.utils.conversion import Conversion
+from app.middleware.auth_middleware import get_current_user
 
 
 class TestConversionHelpers:
@@ -16,36 +18,6 @@ class TestConversionHelpers:
         assert isinstance(file_path, Path)
         assert file_path.name == "test_file.docx"
         assert str(file_path).endswith("test_file.docx")
-
-    def test_set_file(self):
-        """Test _set_file creates proper filename."""
-        filename = Conversion._set_file("Tech Corp", "Software Engineer", "docx")
-
-        assert filename == "Tech_Corp-Software_Engineer.docx"
-
-    def test_set_file_with_extra_spaces(self):
-        """Test _set_file handles extra spaces."""
-        filename = Conversion._set_file("  Tech Corp  ", "  Software Engineer  ", "pdf")
-
-        assert filename == "Tech_Corp-Software_Engineer.pdf"
-
-    def test_rename_file_with_extension(self):
-        """Test rename_file replaces extension correctly."""
-        new_filename = Conversion.rename_file("resume.pdf", "docx")
-
-        assert new_filename == "resume.docx"
-
-    def test_rename_file_no_extension(self):
-        """Test rename_file handles filename without extension."""
-        new_filename = Conversion.rename_file("resume", "docx")
-
-        assert new_filename == "resume.docx"
-
-    def test_rename_file_multiple_dots(self):
-        """Test rename_file handles multiple dots."""
-        new_filename = Conversion.rename_file("resume.v2.final.pdf", "odt")
-
-        assert new_filename == "resume.v2.final.odt"
 
 
 class TestMarkdownToHtml:
@@ -326,7 +298,7 @@ class TestPageFormatting:
     """Test suite for pageFormatting method."""
 
     @patch('app.utils.conversion.Document')
-    def test_pageFormatting_success(self, mock_document_class):
+    def test_page_formatting_success(self, mock_document_class):
         """Test page formatting applies correctly."""
         # Create mock document with sections and paragraphs
         mock_doc = MagicMock()
@@ -351,24 +323,25 @@ class TestPageFormatting:
         mock_document_class.return_value = mock_doc
 
         with patch.object(Conversion, '_get_file_path', return_value=Path('/tmp/test.docx')):
-            result = Conversion.pageFormatting("test.docx", "Test User")
+            result = Conversion.page_formatting("test.docx", "Test User")
 
             assert result == True
             mock_doc.save.assert_called_once()
 
     @patch('app.utils.conversion.Document')
-    def test_pageFormatting_exception(self, mock_document_class):
+    def test_page_formatting_exception(self, mock_document_class):
         """Test page formatting handles exceptions."""
         mock_document_class.side_effect = Exception("File error")
 
         with patch.object(Conversion, '_get_file_path', return_value=Path('/tmp/test.docx')):
-            result = Conversion.pageFormatting("test.docx", "Test User")
+            result = Conversion.page_formatting("test.docx", "Test User")
 
             assert result == False
 
 
 class TestConvertFileRouting:
     """Test suite for convert_file routing method."""
+    user_id = Depends(get_current_user)
 
     @patch('subprocess.run')
     def test_convert_docx_to_md(self, mock_run):
@@ -376,7 +349,7 @@ class TestConvertFileRouting:
         mock_run.return_value = Mock(returncode=0)
 
         with patch('os.path.exists', return_value=True):
-            result = Conversion.convert_file('docx', 'md', '/tmp/input.docx', '/tmp/output.md')
+            result = Conversion.convert_file('docx', 'md', '/tmp/input.docx', '/tmp/output.md', user_id)
 
             assert result == True
             # Verify pandoc was called
@@ -390,7 +363,7 @@ class TestConvertFileRouting:
         mock_run.return_value = Mock(returncode=0)
 
         with patch('os.path.exists', return_value=True):
-            result = Conversion.convert_file('odt', 'md', '/tmp/input.odt', '/tmp/output.md')
+            result = Conversion.convert_file('odt', 'md', '/tmp/input.odt', '/tmp/output.md', user_id)
 
             assert result == True
             assert mock_run.called

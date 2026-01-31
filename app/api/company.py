@@ -9,6 +9,7 @@ from ..models.models import Company, Job, Process
 from ..schemas.company import CompanyCreate, CompanyUpdate, CompanyResponse
 from ..utils.logger import logger
 from ..utils.ai_agent import AiAgent
+from ..utils.file_helpers import set_filename
 from ..middleware.auth_middleware import get_current_user
 import threading
 
@@ -458,7 +459,7 @@ async def download_company_report(
 
 		logger.info(f"Processing company report download", company_id=company_id, company_name=company.company_name)
 
-		filename = Conversion._set_file(company.__getattribute__('company_name'), 'company_report', 'docx')
+		filename = set_filename(company.__getattribute__('company_name'), 'company_report', 'docx')
 		logger.info(f"Generated filename", filename=filename)
 
 		# Ensure directory exists

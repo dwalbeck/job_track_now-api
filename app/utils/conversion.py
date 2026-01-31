@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 from ..core.config import settings
 from ..utils.logger import logger
+from ..utils.file_helpers import set_filename
 
 
 class Conversion:
@@ -66,48 +67,7 @@ class Conversion:
             db.close()
 
     @classmethod
-    def _set_file(cls, company: str, title: str, mimetype: str) -> str:
-        """
-        This will create a filename using the values from the company name and job title
-
-        :param company: Company name
-        :param title: Job position title
-        :param mimetype: File format as the file extension to use
-        :return: full path and filename with extension
-        """
-        import re
-        filetmp = company.strip() + '-' + title.strip()
-        # Replace spaces with underscores first
-        filetmp = filetmp.replace(' ', '_')
-        # Remove any non-alphanumeric characters except underscores and hyphens
-        filetmp = re.sub(r'[^a-zA-Z0-9_-]', '', filetmp)
-        filename = filetmp + '.' + mimetype
-        return filename
-
-
-    @classmethod
-    def rename_file(cls, filename: str, mime_type: str) -> str:
-        """
-        Rename a file by replacing its extension with the specified mime_type.
-
-        Args:
-            filename: Original filename (e.g., "resume.pdf")
-            mime_type: Target mime type/extension (e.g., "docx", "odt", "pdf")
-
-        Returns:
-            New filename with updated extension (e.g., "resume.docx")
-        """
-        # Remove existing extension
-        if '.' in filename:
-            base_name = filename.rsplit('.', 1)[0]
-        else:
-            base_name = filename
-
-        # Add new extension
-        return f"{base_name}.{mime_type}"
-
-    @classmethod
-    def pageFormatting(cls, filename: str, name: str) -> bool:
+    def page_formatting(cls, filename: str, name: str) -> bool:
         """
         Do final formatting on docx file
         - changes page margins to 1/2"
@@ -800,7 +760,7 @@ class Conversion:
 
             # Extract values
             html_content = result.resume_html_rewrite
-            file_name = cls._set_file(result.company, result.job_title, 'docx')
+            file_name = set_filename(result.company, result.job_title, 'docx')
             resume_id = result.resume_id
 
             logger.debug(f"Legacy HTML to DOCX conversion", job_id=job_id, html_length=len(html_content) if html_content else 0)

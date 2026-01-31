@@ -11,6 +11,8 @@ from ..core.database import get_db
 from ..core.config import settings
 from ..utils.conversion import Conversion
 from ..utils.logger import logger
+from ..utils.file_helpers import change_file_extension
+from ..utils.file_helpers import get_user_name
 from ..middleware.auth_middleware import get_current_user
 
 router = APIRouter()
@@ -177,16 +179,9 @@ async def convert_html_to_docx(
     logger.info(f"HTML to DOCX /convert/html2docx conversion requested", job_id=job_id, user_id=user_id)
 
     # Retrieve first and last name from users table for the authenticated user
-    query = text("""SELECT u.first_name, u.last_name, j.resume_id
-                    FROM users u LEFT JOIN job j ON (j.job_id = :job_id AND j.user_id = :user_id)
-                    WHERE u.user_id = :user_id""")
-    result = db.execute(query, {"job_id": job_id, "user_id": user_id}).first()
+    first, last = get_user_name(db, user_id)
 
-    if not result:
-        logger.error("Failed to retrieve user info", user_id=user_id)
-        raise HTTPException(status_code=404, detail="User not found")
-
-    full_name = result.first_name + " " + result.last_name
+    full_name = first + " " + last
 
     try:
         # Otherwise, perform the conversion from HTML to DOCX
@@ -194,7 +189,7 @@ async def convert_html_to_docx(
         conversion_result = Conversion.html2docx_from_job(job_id, db)
         logger.debug(f"html2docx_from_job returned {conversion_result}\n")
 
-        if Conversion.pageFormatting(conversion_result['file_name'], full_name):
+        if Conversion.page_formatting(conversion_result['file_name'], full_name):
             logger.info(f"Custom page formatting succeeded")
         else:
             logger.info(f"Custom page formatting failed")
@@ -239,14 +234,8 @@ async def download_resume_file(
     logger.info(f"Resume file download requested", file_name=file_name, user_id=user_id)
 
     # Retrieve first and last name from users table for the authenticated user
-    query = text("SELECT first_name, last_name FROM users WHERE user_id = :user_id")
-    user_result = db.execute(query, {"user_id": user_id}).first()
-
-    if not user_result:
-        logger.error("Failed to retrieve user info", user_id=user_id)
-        raise HTTPException(status_code=404, detail="User not found")
-
-    full_name = user_result.first_name + " " + user_result.last_name
+    first, last = get_user_name(db, user_id)
+    full_name = first + " " + last
 
     try:
         # Construct the full file path
@@ -267,8 +256,8 @@ async def download_resume_file(
         file_extension = file_name.rsplit('.', 1)[-1] if '.' in file_name else 'docx'
 
         # Create download filename as resume-firstname_lastname.extension using authenticated user's name
-        if user_result.first_name and user_result.last_name:
-            download_filename = f"resume-{user_result.first_name}_{user_result.last_name}.{file_extension}"
+        if first and last:
+            download_filename = f"resume-{first}_{last}.{file_extension}"
         else:
             # Fallback to original filename if user info not complete
             download_filename = file_name
@@ -284,7 +273,7 @@ async def download_resume_file(
         }
         media_type = media_types.get(file_extension.lower(), 'application/octet-stream')
 
-        if Conversion.pageFormatting(file_name, full_name):
+        if Conversion.page_formatting(file_name, full_name):
             logger.info(f"Custom page formatting succeeded")
         else:
             logger.info(f"Custom page formatting failed")
@@ -327,17 +316,15 @@ async def convert_final(
     Convert the final resume (resume_md_rewrite) to the specified output format.
 
     This endpoint:
-    1. Retrieves the resume_md_rewrite content from resume_detail table
-    2. Queries the baseline resume to get original format (for reference styling)
-    3. Converts to the requested format (odt, docx, pdf, or html)
-    4. Uses the original file as a reference if formats match
-    5. Saves the file with the same base name as the original but with new extension
-    6. Returns the new filename
+    1. Retrieves the resume_html_rewrite content from resume_detail table
+    2. Converts to the requested format (odt, docx, pdf, or html)
+    3. Saves the file with the same base name as the original but with new extension
+    4. Returns the new filename
 
     Args:
         request: ConvertFinalRequest with resume_id and output_format
-        current_user: Current user dict from JWT
         db: Database session
+        user_id: Current user dict from JWT
 
     Returns:
         ConvertFinalResponse with the generated file_name
@@ -371,19 +358,8 @@ async def convert_final(
         original_file_name = result.file_name
         html_content = result.resume_html_rewrite
 
-        # Determine if we should use a reference file
-        reference_file = None
-        if result.original_format:
-            # Check if baseline format matches requested format
-            baseline_format = result.original_format.lower()
-            requested_format = request.output_format.value.lower()
-
-            if baseline_format == requested_format:
-                reference_file = result.orig_file_name
-                logger.debug(f"Using reference file for styling", reference_file=reference_file)
-
         # Generate new filename with requested extension
-        new_file_name = Conversion.rename_file(original_file_name, request.output_format.value)
+        new_file_name = change_file_extension(original_file_name, '', request.output_format.value)
 
         logger.debug(f"Converting resume", original_file_name=original_file_name, new_file_name=new_file_name,
                      reference_file=reference_file)
@@ -494,8 +470,8 @@ async def convert_file(
 
         # Query to get resume data
         query = text("""
-            SELECT r.file_name, r.original_format, r.is_baseline
-            FROM resume r
+            SELECT r.file_name, r.original_format, r.is_baseline, rd.resume_html, rd.resume_html_rewrite 
+            FROM resume r LEFT JOIN resume_detail rd ON (r.resume_id=rd.resume_id) 
             WHERE r.resume_id = :resume_id AND r.user_id = :user_id
         """)
 
@@ -524,49 +500,39 @@ async def convert_file(
             # Baseline resume
             input_path = os.path.join(resume_dir, file_name)
             # Change extension to target format
-            output_file_name = Conversion.rename_file(file_name, target_format)
+            output_file_name = change_file_extension(file_name, '', target_format)
             output_path = os.path.join(resume_dir, output_file_name)
 
         elif source_format in ['md', 'html']:
-            # Optimized resume
             if source_format == 'html':
-                # Use file_name as-is
-                input_file_name = file_name
-            else:  # md
-                # Swap extension from html to md
-                input_file_name = Conversion.rename_file(file_name, 'md')
+                input_file_name = change_file_extension(file_name, '', source_format)
+            else:
+                input_file_name = change_file_extension(file_name, '', 'md')
 
             input_path = os.path.join(resume_dir, input_file_name)
 
-            # For HTML source, check if file exists on disk
-            # If not, retrieve from database and write to disk
-            if source_format == 'html' and not os.path.exists(input_path):
+            # check if file exists on disk, if not, write to disk
+            if not os.path.exists(input_path):
                 logger.debug(f"HTML file not found on disk, retrieving from database", resume_id=request.resume_id, file_name=input_file_name)
 
-                # Query to get HTML content from resume_detail
-                html_query = text("""
-                    SELECT resume_html_rewrite
-                    FROM resume_detail
-                    WHERE resume_id = :resume_id
-                """)
-                html_result = db.execute(html_query, {"resume_id": request.resume_id}).first()
-
-                if not html_result or not html_result.resume_html_rewrite:
+                if not result.resume_html and not result.resume_html_rewrite:
                     logger.error(f"No HTML content found in database", resume_id=request.resume_id)
                     raise HTTPException(status_code=404, detail=f"No HTML content found for resume_id: {request.resume_id}")
 
                 # Create directory if it doesn't exist
                 os.makedirs(os.path.dirname(input_path), exist_ok=True)
 
+                tmp_content = result.resume_html_rewrite
+                if not tmp_content:
+                    tmp_content = result.resume_html
+
                 # Write HTML content to disk
                 with open(input_path, 'w', encoding='utf-8') as f:
-                    f.write(html_result.resume_html_rewrite)
+                    f.write(tmp_content)
 
                 logger.debug(f"HTML content written to disk", file_path=input_path)
 
-            # Append '-final' to output filename to avoid collision
-            base_name = file_name.rsplit('.', 1)[0] if '.' in file_name else file_name
-            output_file_name = f"{base_name}-final.{target_format}"
+            output_file_name = change_file_extension(input_file_name, '-final', target_format)
             output_path = os.path.join(resume_dir, output_file_name)
         else:
             logger.error(f"Unsupported source format", source_format=source_format)
@@ -590,11 +556,7 @@ async def convert_file(
         # Update resume_detail with the converted filename so it can be downloaded
         # Only for binary output formats (docx, odt, pdf) that need to be downloaded via /files/resumes
         if target_format in ['docx', 'odt', 'pdf']:
-            update_query = text("""
-                UPDATE resume_detail
-                SET rewrite_file_name = :file_name
-                WHERE resume_id = :resume_id
-            """)
+            update_query = text("UPDATE resume_detail SET rewrite_file_name = :file_name WHERE resume_id = :resume_id")
             db.execute(update_query, {
                 "file_name": output_file_name,
                 "resume_id": request.resume_id
