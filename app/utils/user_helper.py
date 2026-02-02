@@ -158,7 +158,7 @@ def get_user_settings(db: Session, user_id: int) -> Optional[Dict[str, Any]]:
         return None
 
 
-def get_user_name(db: Session, user_id: int) -> Tuple[str, str]:
+def get_user_name(db: Session, user_id: int) -> str:
     """
     Get the user's first and last name.
 
@@ -180,13 +180,14 @@ def get_user_name(db: Session, user_id: int) -> Tuple[str, str]:
         result = db.execute(query, {"user_id": user_id}).first()
 
         if result:
-            fullname = result.first_name + " " + result.last_name
-            return (fullname)
-        return ("")
+            ret = result.first_name or ""
+            ret += result.last_name or ""
+            return ret
+        return ""
 
     except Exception as e:
         logger.error(f"Error fetching user name", user_id=user_id, error=str(e))
-        return ("", "")
+        return ''
 
 
 def get_user_setting_value(db: Session, user_id: int, setting_name: str) -> Optional[str]:

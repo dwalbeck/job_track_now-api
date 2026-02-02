@@ -32,9 +32,9 @@ def set_filename(company: str, title: str, mimetype: str) -> str:
 	# Replace spaces with underscores first
 	file_tmp = file_tmp.replace(' ', '_')
 	# Remove any non-alphanumeric characters except underscores and hyphens
-	file_tmp = re.sub(r'[^a-zA-Z0-9_-]', '', file_tmp)
+	file_tmp = re.sub(r'[^a-zA-Z0-9_\-\.]', '', file_tmp)
 	filename = file_tmp + '.' + mimetype
-	return filename
+	return filename.lower()
 
 def make_unique_resume_filename(base_filename: str, db: Session, user_id: int) -> str:
 	"""
@@ -101,7 +101,7 @@ def clean_filename_part(text: str) -> str:
 	return cleaned.lower()
 
 
-def get_personal_name(db: Session, user_id: int) -> tuple[str, str]:
+def get_personal_name(db: Session, user_id: int) -> str:
     """
     Get the user's first and last name.
 
@@ -122,7 +122,7 @@ def get_personal_name(db: Session, user_id: int) -> tuple[str, str]:
         return get_user_name(db, user_id)
     except Exception as e:
         logger.error(f"Error fetching user name", user_id=user_id, error=str(e))
-        return ("", "")
+        return ""
 
 
 def get_file_extension(file_path: str) -> str:
@@ -177,22 +177,15 @@ def create_standardized_download_file(
         raise ValueError("user_id is required")
 
     # Get user's name
-    first_name, last_name = get_personal_name(db, user_id)
-
-    # Create name parts
-    name_part = f"{first_name}_{last_name}".lower().replace(" ", "_")
-
-    # Get file extension
+    full_name = get_personal_name(db, user_id)
+    name_part = f"{full_name}".lower().replace(" ", "_")
     extension = get_file_extension(source_file_path)
-
-    # For cover letters, always use .docx
-    if file_type == 'cover_letter':
-        extension = '.docx'
-
+    
     # Create download filename
     if file_type == 'resume':
         download_filename = f"resume-{name_part}{extension}"
     elif file_type == 'cover_letter':
+        extension = '.docx'
         download_filename = f"cover_letter-{name_part}{extension}"
     else:
         download_filename = f"{file_type}-{name_part}{extension}"

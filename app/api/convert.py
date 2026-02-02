@@ -162,7 +162,7 @@ class Html2DocxResponse(BaseModel):
 async def convert_html_to_docx(
     job_id: int,
     db: Session = Depends(get_db),
-    user_id: str = Depends(get_current_user)
+    user_id: int = Depends(get_current_user)
 ):
     """
     Performs the conversion from HTML to DOCX and returns the new filename.
@@ -179,9 +179,7 @@ async def convert_html_to_docx(
     logger.info(f"HTML to DOCX /convert/html2docx conversion requested", job_id=job_id, user_id=user_id)
 
     # Retrieve first and last name from users table for the authenticated user
-    first, last = get_user_name(db, user_id)
-
-    full_name = first + " " + last
+    full_name = get_user_name(db, user_id)
 
     try:
         # Otherwise, perform the conversion from HTML to DOCX
@@ -234,8 +232,7 @@ async def download_resume_file(
     logger.info(f"Resume file download requested", file_name=file_name, user_id=user_id)
 
     # Retrieve first and last name from users table for the authenticated user
-    first, last = get_user_name(db, user_id)
-    full_name = first + " " + last
+    full_name = get_user_name(db, user_id)
 
     try:
         # Construct the full file path

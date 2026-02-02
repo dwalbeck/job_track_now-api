@@ -24,11 +24,10 @@ class TestGetPersonalName:
         mock_db.execute.return_value.first.return_value = mock_result
 
         with patch('app.utils.file_helpers.get_user_name') as mock_get_user_name:
-            mock_get_user_name.return_value = ("John", "Doe")
-            first_name, last_name = get_personal_name(mock_db, user_id=1)
+            mock_get_user_name.return_value = "John Doe"
+            full_name = get_personal_name(mock_db, user_id=1)
 
-        assert first_name == "John"
-        assert last_name == "Doe"
+        assert full_name == "John Doe"
         mock_get_user_name.assert_called_once_with(mock_db, 1)
 
     def test_get_personal_name_no_result(self):
@@ -36,44 +35,40 @@ class TestGetPersonalName:
         mock_db = Mock()
 
         with patch('app.utils.file_helpers.get_user_name') as mock_get_user_name:
-            mock_get_user_name.return_value = ("", "")
-            first_name, last_name = get_personal_name(mock_db, user_id=1)
+            mock_get_user_name.return_value = ""
+            full_name= get_personal_name(mock_db, user_id=1)
 
-        assert first_name == ""
-        assert last_name == ""
+        assert full_name == ""
 
     def test_get_personal_name_null_first_name(self):
         """Test getting personal name when first_name is NULL."""
         mock_db = Mock()
 
         with patch('app.utils.file_helpers.get_user_name') as mock_get_user_name:
-            mock_get_user_name.return_value = ("", "Doe")
-            first_name, last_name = get_personal_name(mock_db, user_id=1)
+            mock_get_user_name.return_value = "Doe"
+            full_name = get_personal_name(mock_db, user_id=1)
 
-        assert first_name == ""
-        assert last_name == "Doe"
+        assert full_name == "Doe"
 
     def test_get_personal_name_null_last_name(self):
         """Test getting personal name when last_name is NULL."""
         mock_db = Mock()
 
         with patch('app.utils.file_helpers.get_user_name') as mock_get_user_name:
-            mock_get_user_name.return_value = ("John", "")
-            first_name, last_name = get_personal_name(mock_db, user_id=1)
+            mock_get_user_name.return_value = "John"
+            full_name = get_personal_name(mock_db, user_id=1)
 
-        assert first_name == "John"
-        assert last_name == ""
+        assert full_name == "John"
 
     def test_get_personal_name_both_null(self):
         """Test getting personal name when both names are NULL."""
         mock_db = Mock()
 
         with patch('app.utils.file_helpers.get_user_name') as mock_get_user_name:
-            mock_get_user_name.return_value = ("", "")
-            first_name, last_name = get_personal_name(mock_db, user_id=1)
+            mock_get_user_name.return_value = ""
+            full_name = get_personal_name(mock_db, user_id=1)
 
-        assert first_name == ""
-        assert last_name == ""
+        assert full_name == ""
 
     def test_get_personal_name_database_error(self):
         """Test getting personal name when database error occurs."""
@@ -81,23 +76,21 @@ class TestGetPersonalName:
 
         with patch('app.utils.file_helpers.get_user_name') as mock_get_user_name:
             mock_get_user_name.side_effect = Exception("Database connection failed")
-            first_name, last_name = get_personal_name(mock_db, user_id=1)
+            full_name = get_personal_name(mock_db, user_id=1)
 
         # Should return empty strings on error
-        assert first_name == ""
-        assert last_name == ""
+        assert full_name == ""
 
     def test_get_personal_name_with_spaces(self):
         """Test getting personal name with extra spaces."""
         mock_db = Mock()
 
         with patch('app.utils.file_helpers.get_user_name') as mock_get_user_name:
-            mock_get_user_name.return_value = ("  John  ", "  Doe  ")
-            first_name, last_name = get_personal_name(mock_db, user_id=1)
+            mock_get_user_name.return_value = ("  John Doe  ")
+            full_name = get_personal_name(mock_db, user_id=1)
 
         # Function returns as-is, doesn't strip
-        assert first_name == "  John  "
-        assert last_name == "  Doe  "
+        assert full_name == " John Doe "
 
     def test_get_personal_name_no_user_id(self):
         """Test that get_personal_name raises error when user_id is not provided."""
@@ -213,7 +206,7 @@ class TestCreateStandardizedDownloadFile:
             mock_db = Mock()
 
             with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
-                mock_get_name.return_value = ("John", "Doe")
+                mock_get_name.return_value = "John Doe"
 
                 tmp_path, download_name, mime_type = create_standardized_download_file(
                     src_path, "resume", mock_db, user_id=1
@@ -244,7 +237,7 @@ class TestCreateStandardizedDownloadFile:
             mock_db = Mock()
 
             with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
-                mock_get_name.return_value = ("Jane", "Smith")
+                mock_get_name.return_value = "Jane Smith"
 
                 tmp_path, download_name, mime_type = create_standardized_download_file(
                     src_path, "cover_letter", mock_db, user_id=1
@@ -274,7 +267,7 @@ class TestCreateStandardizedDownloadFile:
             mock_db = Mock()
 
             with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
-                mock_get_name.return_value = ("Test", "User")
+                mock_get_name.return_value = "Test User"
 
                 tmp_path, download_name, mime_type = create_standardized_download_file(
                     src_path, "cover_letter", mock_db, user_id=1
@@ -300,7 +293,7 @@ class TestCreateStandardizedDownloadFile:
             mock_db = Mock()
 
             with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
-                mock_get_name.return_value = ("Alex", "Johnson")
+                mock_get_name.return_value = "Alex Johnson"
 
                 tmp_path, download_name, mime_type = create_standardized_download_file(
                     src_path, "custom_document", mock_db, user_id=1
@@ -325,7 +318,7 @@ class TestCreateStandardizedDownloadFile:
             mock_db = Mock()
 
             with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
-                mock_get_name.return_value = ("Mary Jane", "Watson Parker")
+                mock_get_name.return_value = "Mary Jane Watson Parker"
 
                 tmp_path, download_name, mime_type = create_standardized_download_file(
                     src_path, "resume", mock_db, user_id=1
@@ -350,7 +343,7 @@ class TestCreateStandardizedDownloadFile:
             mock_db = Mock()
 
             with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
-                mock_get_name.return_value = ("JOHN", "DOE")
+                mock_get_name.return_value = "JOHN DOE"
 
                 tmp_path, download_name, mime_type = create_standardized_download_file(
                     src_path, "resume", mock_db, user_id=1
@@ -370,7 +363,7 @@ class TestCreateStandardizedDownloadFile:
         mock_db = Mock()
 
         with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
-            mock_get_name.return_value = ("John", "Doe")
+            mock_get_name.return_value = "John Doe"
 
             with pytest.raises(Exception):
                 create_standardized_download_file(
@@ -387,7 +380,7 @@ class TestCreateStandardizedDownloadFile:
             mock_db = Mock()
 
             with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
-                mock_get_name.return_value = ("", "")
+                mock_get_name.return_value = ""
 
                 tmp_path, download_name, mime_type = create_standardized_download_file(
                     src_path, "resume", mock_db, user_id=1
@@ -434,7 +427,7 @@ class TestCreateStandardizedDownloadFile:
                 mock_db = Mock()
 
                 with patch('app.utils.file_helpers.get_personal_name') as mock_get_name:
-                    mock_get_name.return_value = ("Test", "User")
+                    mock_get_name.return_value = "Test User"
 
                     tmp_path, download_name, mime_type = create_standardized_download_file(
                         src_path, "resume", mock_db, user_id=1
