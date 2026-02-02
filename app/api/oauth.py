@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Optional
 
 from ..core.database import get_db
-from ..schemas.oauth import AuthorizeRequest, LoginRequest, TokenRequest, TokenResponse
+from ..schemas.oauth import TokenResponse
 from ..utils.oauth_utils import (
     generate_authorization_code,
     store_authorization_code,

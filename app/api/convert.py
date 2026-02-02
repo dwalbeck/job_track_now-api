@@ -212,7 +212,7 @@ async def convert_html_to_docx(
 async def download_resume_file(
     file_name: str,
     db: Session = Depends(get_db),
-    user_id: str = Depends(get_current_user)
+    user_id: int = Depends(get_current_user)
 ):
     """
     Download a resume file from the resume directory.
@@ -224,8 +224,8 @@ async def download_resume_file(
 
     Args:
         file_name: Name of the file to download
-        current_user: Current user dict from JWT
         db: Database session
+        user_id: Current user ID from JWT
 
     Returns:
         FileResponse with the requested file

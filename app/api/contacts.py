@@ -1,11 +1,11 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from ..core.database import get_db
 from ..models.models import Contact, Job, JobContact
-from ..schemas.contact import Contact as ContactSchema, ContactCreate, ContactUpdate, ContactWithLinks, ContactLinkedJob
+from ..schemas.contact import Contact as ContactSchema, ContactUpdate, ContactWithLinks, ContactLinkedJob
 from ..utils.logger import logger
 from ..utils.job_helpers import update_job_activity
 from ..middleware.auth_middleware import get_current_user
@@ -17,7 +17,7 @@ router = APIRouter()
 async def create_or_update_contact(
     contact_data: ContactUpdate,
     db: Session = Depends(get_db),
-    user_id: str = Depends(get_current_user)
+    user_id: int = Depends(get_current_user)
 ):
     """
     Create a new contact or update an existing one.
@@ -184,7 +184,7 @@ async def get_contacts(
             FROM contact c
             JOIN job_contact jc ON c.contact_id = jc.contact_id
             WHERE c.contact_active = true AND c.user_id = :user_id AND jc.job_id = :job_id
-            ORDER BY c.first_name ASC, c.last_name ASC
+            ORDER BY c.first_name, c.last_name
         """
         result = db.execute(text(query), {"job_id": job_id, "user_id": user_id})
         contacts = [

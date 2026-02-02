@@ -28,18 +28,16 @@ async def get_all_jobs(
     logger.debug("Fetching all active jobs", user_id=user_id)
 
     # Use raw SQL to include calendar data from next upcoming appointment
+    # Include same-day appointments regardless of time (for post-interview scoring prompts)
     query = text("""
-        SELECT c.calendar_id, c.start_date, c.start_time, j.*
+        SELECT c.calendar_id, c.start_date, c.start_time, c.end_time, j.*
         FROM job j
             LEFT JOIN LATERAL (
-                SELECT start_date, start_time, calendar_id
+                SELECT start_date, start_time, end_time, calendar_id
                 FROM calendar c_inner
                 WHERE c_inner.job_id=j.job_id
                     AND c_inner.user_id = :user_id
-                    AND (
-                        c_inner.start_date > CURRENT_DATE
-                        OR (c_inner.start_date = CURRENT_DATE AND c_inner.start_time > CURRENT_TIME)
-                    )
+                    AND c_inner.start_date >= CURRENT_DATE
                 ORDER BY start_date ASC, start_time ASC
                 LIMIT 1
             ) AS c ON TRUE

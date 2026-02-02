@@ -180,8 +180,9 @@ def get_user_name(db: Session, user_id: int) -> Tuple[str, str]:
         result = db.execute(query, {"user_id": user_id}).first()
 
         if result:
-            return (result.first_name or "", result.last_name or "")
-        return ("", "")
+            fullname = result.first_name + " " + result.last_name
+            return (fullname)
+        return ("")
 
     except Exception as e:
         logger.error(f"Error fetching user name", user_id=user_id, error=str(e))

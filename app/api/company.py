@@ -483,6 +483,7 @@ async def download_company_report(
 		try:
 			os.unlink(temp_html_path)
 		except:
+			logger.error(f"An Error happened on download_company_report", company_id=company_id)
 			pass
 
 		if not success:

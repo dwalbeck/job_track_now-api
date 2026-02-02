@@ -68,6 +68,7 @@ class Job(JobBase):
     calendar_id: Optional[int] = None
     start_date: Optional[date] = None
     start_time: Optional[time] = None
+    end_time: Optional[time] = None
 
     class Config:
         from_attributes = True

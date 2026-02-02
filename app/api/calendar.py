@@ -1,11 +1,11 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import text, and_
+from sqlalchemy import text
 
 from ..core.database import get_db
 from ..models.models import Calendar, Job
-from ..schemas.calendar import Calendar as CalendarSchema, CalendarCreate, CalendarUpdate
+from ..schemas.calendar import Calendar as CalendarSchema, CalendarUpdate
 from ..utils.date_helpers import get_month_date_range, get_week_date_range, validate_week_start
 from ..utils.job_helpers import update_job_activity, calc_avg_score
 from ..utils.logger import logger
@@ -14,7 +14,7 @@ from ..middleware.auth_middleware import get_current_user
 router = APIRouter()
 
 
-@router.get("/calendar/appt")
+@router.get('/calendar/appt')
 async def get_job_appointments(
     job_id: int = Query(..., description="Job ID to get appointments for"),
     db: Session = Depends(get_db),
@@ -214,7 +214,7 @@ async def create_or_update_calendar(
     calendar_data: CalendarUpdate,
     job_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
-    user_id: str = Depends(get_current_user)
+    user_id: int = Depends(get_current_user)
 ):
     """
     Create a new calendar event or update an existing one.
@@ -249,7 +249,7 @@ async def create_or_update_calendar(
 
     else:
         # Create new calendar event
-        calendar_dict = calendar_data.dict(exclude={'calendar_id'}, exclude_unset=True)
+        calendar_dict = calendar_data.model_dump(exclude={'calendar_id'}, exclude_unset=True)
         calendar_event = Calendar(**calendar_dict)
         db.add(calendar_event)
 

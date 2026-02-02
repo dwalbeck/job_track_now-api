@@ -1,11 +1,11 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from ..core.database import get_db
 from ..models.models import Note, Job
-from ..schemas.note import Note as NoteSchema, NoteCreate, NoteUpdate
+from ..schemas.note import Note as NoteSchema, NoteUpdate
 from ..utils.job_helpers import update_job_activity
 from ..utils.logger import logger
 from ..middleware.auth_middleware import get_current_user
@@ -114,7 +114,7 @@ async def _create_or_update_note(note_data: NoteUpdate, db: Session, user_id: in
 async def create_or_update_note(
     note_data: NoteUpdate,
     db: Session = Depends(get_db),
-    user_id: str = Depends(get_current_user)
+    user_id: int = Depends(get_current_user)
 ):
     """
     Create a new note or update an existing one.
@@ -127,7 +127,7 @@ async def create_or_update_note(
 async def create_or_update_note_plural(
     note_data: NoteUpdate,
     db: Session = Depends(get_db),
-    user_id: str = Depends(get_current_user)
+    user_id: int = Depends(get_current_user)
 ):
     """
     Create a new note or update an existing one (plural route for compatibility).
