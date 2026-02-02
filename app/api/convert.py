@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from enum import Enum
 import os
+import re
 
 from ..core.database import get_db
 from ..core.config import settings
@@ -253,8 +254,9 @@ async def download_resume_file(
         file_extension = file_name.rsplit('.', 1)[-1] if '.' in file_name else 'docx'
 
         # Create download filename as resume-firstname_lastname.extension using authenticated user's name
-        if first and last:
-            download_filename = f"resume-{first}_{last}.{file_extension}"
+        if full_name:
+            full_name = re.sub(' ', '_', full_name)
+            download_filename = f"resume-{full_name}.{file_extension}"
         else:
             # Fallback to original filename if user info not complete
             download_filename = file_name

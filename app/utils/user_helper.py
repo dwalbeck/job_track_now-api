@@ -5,6 +5,7 @@ This module provides helper functions to query user data from the normalized
 user tables (users, user_address, address, user_detail, user_setting) instead
 of the legacy personal table.
 """
+import re
 from typing import Optional, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -172,17 +173,16 @@ def get_user_name(db: Session, user_id: int) -> str:
         Tuple of (first_name, last_name). Returns empty strings if not found.
     """
     try:
-        query = text("""
-            SELECT first_name, last_name
-            FROM users
-            WHERE user_id = :user_id
-        """)
+        query = text("SELECT first_name, last_name FROM users WHERE user_id = :user_id")
         result = db.execute(query, {"user_id": user_id}).first()
 
         if result:
-            ret = result.first_name or ""
-            ret += result.last_name or ""
-            return ret
+            first = result.first_name or ""
+            last =result.last_name or ""
+            full_name = f"{first} {last}".strip()
+            full_name = re.sub(r'[^a-zA-Z0-9\-]', '', full_name)
+            return full_name
+
         return ""
 
     except Exception as e:
