@@ -78,6 +78,162 @@ class AiAgent:
 		with open(prompt_path, 'r') as f:
 			return f.read()
 
+	def _parse_json_response(self, response_text: str, required_keys: list = None) -> dict:
+		"""
+		Robustly parse JSON from AI response, handling common issues like:
+		- Unescaped newlines in string values
+		- Markdown code blocks wrapping JSON
+		- Nested objects with special characters
+
+		Args:
+			response_text: Raw response text from AI
+			required_keys: List of keys that must be present in parsed result
+
+		Returns:
+			Parsed JSON dictionary
+
+		Raises:
+			ValueError: If parsing fails after all attempts
+		"""
+		import re
+
+		# Helper to attempt JSON parsing with error info
+		def try_parse(text, description=""):
+			try:
+				return json.loads(text)
+			except json.JSONDecodeError as e:
+				logger.debug(f"JSON parse attempt failed ({description})", error=str(e))
+				return None
+
+		# Attempt 1: Direct parsing
+		result = try_parse(response_text, "direct")
+		if result:
+			return result
+
+		# Attempt 2: Extract from markdown code blocks using balanced brace matching
+		# First, find the code block
+		code_block_match = re.search(r'```(?:json)?\s*(\{.+)', response_text, re.DOTALL)
+		if code_block_match:
+			# Extract from the opening brace and find the matching closing brace
+			json_start = code_block_match.group(1)
+			# Find the closing ``` and take content before it
+			end_match = re.search(r'\}\s*```', json_start)
+			if end_match:
+				json_text = json_start[:end_match.end()-3].strip()
+				result = try_parse(json_text, "markdown block")
+				if result:
+					return result
+
+		# Attempt 3: Find JSON object using balanced brace matching
+		# Find the first { and match to its closing }
+		first_brace = response_text.find('{')
+		if first_brace != -1:
+			brace_count = 0
+			in_string = False
+			escape_next = False
+			last_brace = -1
+
+			for i, char in enumerate(response_text[first_brace:], first_brace):
+				if escape_next:
+					escape_next = False
+					continue
+				if char == '\\':
+					escape_next = True
+					continue
+				if char == '"' and not escape_next:
+					in_string = not in_string
+					continue
+				if not in_string:
+					if char == '{':
+						brace_count += 1
+					elif char == '}':
+						brace_count -= 1
+						if brace_count == 0:
+							last_brace = i
+							break
+
+			if last_brace != -1:
+				json_text = response_text[first_brace:last_brace + 1]
+				result = try_parse(json_text, "balanced braces")
+				if result:
+					return result
+
+				# Attempt 4: Try to repair common JSON issues in the extracted text
+				# Fix unescaped newlines inside strings
+				repaired = self._repair_json_string(json_text)
+				result = try_parse(repaired, "repaired JSON")
+				if result:
+					return result
+
+		# All attempts failed
+		preview = response_text[:500] if len(response_text) > 500 else response_text
+		raise ValueError(f"Failed to parse AI response as JSON after all attempts. Response preview: {preview}")
+
+	def _repair_json_string(self, json_text: str) -> str:
+		"""
+		Attempt to repair common JSON issues, particularly unescaped newlines in strings.
+
+		Args:
+			json_text: Potentially malformed JSON string
+
+		Returns:
+			Repaired JSON string
+		"""
+		# This is a heuristic repair - try to escape newlines that appear inside strings
+		result = []
+		in_string = False
+		escape_next = False
+		i = 0
+
+		while i < len(json_text):
+			char = json_text[i]
+
+			if escape_next:
+				result.append(char)
+				escape_next = False
+				i += 1
+				continue
+
+			if char == '\\':
+				result.append(char)
+				escape_next = True
+				i += 1
+				continue
+
+			if char == '"':
+				result.append(char)
+				in_string = not in_string
+				i += 1
+				continue
+
+			if in_string and char == '\n':
+				# Replace unescaped newline with escaped version
+				result.append('\\n')
+				i += 1
+				continue
+
+			if in_string and char == '\r':
+				# Skip carriage returns or escape them
+				if i + 1 < len(json_text) and json_text[i + 1] == '\n':
+					result.append('\\n')
+					i += 2
+					continue
+				else:
+					result.append('\\r')
+					i += 1
+					continue
+
+			if in_string and char == '\t':
+				# Escape tabs
+				result.append('\\t')
+				i += 1
+				continue
+
+			result.append(char)
+			i += 1
+
+		return ''.join(result)
+
 	def get_html(self, resume_id: int) -> str:
 		"""
 		Retrieve the HTML content of a resume from the DB
@@ -497,19 +653,15 @@ class AiAgent:
 		response_text = response.choices[0].message.content
 		logger.debug(f"Resume rewrite response received", response_size=len(response_text))
 
-		# Parse JSON response
+		# Parse JSON response using robust helper
 		try:
-			# Try to parse the response as JSON
-			result = json.loads(response_text)
-
-			# Validate the structure - only require 'resume_html_rewrite'
-			# Note: 'suggestions' has been removed from requirements as per user request
 			required_keys = ['resume_html_rewrite']
+			result = self._parse_json_response(response_text, required_keys)
+
+			# Validate the structure
 			if not all(key in result for key in required_keys):
 				missing_keys = [key for key in required_keys if key not in result]
-				print(f"DEBUG resume_rewrite: Missing keys: {missing_keys}", file=sys.stderr, flush=True)
-				print(f"DEBUG resume_rewrite: Available keys: {list(result.keys())}", file=sys.stderr, flush=True)
-				print(f"DEBUG resume_rewrite: Response preview: {response_text[:500]}", file=sys.stderr, flush=True)
+				logger.error(f"Response missing required keys", missing_keys=missing_keys, available_keys=list(result.keys()))
 				raise ValueError(f"Response missing required keys: {missing_keys}. Available keys: {list(result.keys())}")
 
 			# Set suggestion to empty list (feature disabled for now)
@@ -517,20 +669,10 @@ class AiAgent:
 
 			return result
 
-		except json.JSONDecodeError as e:
-			# If JSON parsing fails, try to extract JSON from HTML code blocks
-			import re
-			json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL)
-			if json_match:
-				try:
-					result = json.loads(json_match.group(1))
-					# Set suggestion to empty list (feature disabled for now)
-					result['suggestion'] = []
-					return result
-				except json.JSONDecodeError:
-					pass
-
-			raise ValueError(f"Failed to parse AI response as JSON: {str(e)}")
+		except ValueError as e:
+			# Log and re-raise with context
+			logger.error(f"Failed to parse resume rewrite response", error=str(e), response_preview=response_text[:200])
+			raise
 
 	def html_styling_diff(
 		self,

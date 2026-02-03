@@ -180,7 +180,7 @@ def get_user_name(db: Session, user_id: int) -> str:
             first = result.first_name or ""
             last =result.last_name or ""
             full_name = f"{first} {last}".strip()
-            full_name = re.sub(r'[^a-zA-Z0-9\-]', '', full_name)
+            full_name = re.sub(r'[^a-zA-Z0-9\s\-]', '', full_name)
             return full_name
 
         return ""

@@ -154,6 +154,7 @@ def create_standardized_download_file(
 
     # Get user's name
     full_name = get_user_name(db, user_id)
+    logger.debug(f"In file_helpers.py:", full_name=full_name)
     name_part = f"{full_name}".lower().replace(" ", "_")
     extension = get_file_extension(source_file_path)
 
