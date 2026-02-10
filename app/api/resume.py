@@ -882,7 +882,7 @@ async def extract_resume_data(
 
 	try:
 		# Initialize AI agent with database session
-		ai_agent = AiAgent(db)
+		ai_agent = AiAgent(db, user_id)
 
 		# Extract data using AI
 		result = ai_agent.extract_data(resume_id=extract_request.resume_id)
@@ -1240,7 +1240,7 @@ async def rewrite_resume(
 			thread_db = SessionLocal()
 			try:
 				logger.info(f"Resume rewrite background process started", job_id=request.job_id, process_id=process_id)
-				thread_ai_agent = AiAgent(thread_db)
+				thread_ai_agent = AiAgent(thread_db, thread_user_id)
 				thread_ai_agent.resume_rewrite_process(request.job_id, process_id, thread_user_id)
 			finally:
 				logger.info(f"Closing resume rewrite background thread", job_id=request.job_id, process_id=process_id)

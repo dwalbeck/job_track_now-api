@@ -277,7 +277,7 @@ async def extract_job_data(
             )
 
         # Initialize AI agent with database session
-        ai_agent = AiAgent(db)
+        ai_agent = AiAgent(db, user_id)
 
         # Extract data using AI
         result = ai_agent.job_extraction(job_id=extract_request.job_id, user_id=user_id)

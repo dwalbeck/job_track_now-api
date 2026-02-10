@@ -703,20 +703,6 @@ class Conversion:
         except Exception as e:
             raise Exception(f"Error converting Markdown to PDF: {str(e)}")
 
-    @classmethod
-    def html2md(cls, html_content: str) -> str:
-        """
-        Convert resume HTML content to Markdown
-        :param cls:
-        :param html_content: contains the HTML content to be converted
-        :return: a string containing the Markdown formatting of the document
-        """
-
-        from html_to_markdown import convert
-
-        markdown = convert(html_content)
-        return markdown
-
 
     # HTML to DOCX conversion (legacy method, keeping for backwards compatibility)
     @classmethod
@@ -2040,6 +2026,23 @@ class Conversion:
                     with open(output_path, 'w', encoding='utf-8') as f:
                         f.write(result.text_content)
                     return True
+
+                elif source_format == 'html':
+                    logger.debug(f"Converting from HTML file", input_path=input_path, output_path=output_path)
+                    import pyhtml2md
+
+                    with open(input_path, 'r') as file:
+                        input_data = file.read()
+                    logger.debug(f"HTML file read", file_size=len(input_data))
+
+                    markdown = pyhtml2md.convert(input_data)
+
+                    logger.debug(f"Writing Markdown file", output_path=output_path)
+                    with open(output_path, 'w') as file:
+                        file.write(markdown)
+                    logger.debug(f"completed converting file", output_path=output_path)
+                    return True
+
                 else:
                     logger.error(f"Unsupported conversion to markdown: {source_format}2md")
                     return False
@@ -2073,7 +2076,8 @@ class Conversion:
                 'pdf2html': 'markitdown',
                 'html2docx': 'html4docx',
                 'html2odt': 'pandoc',
-                'html2pdf': 'weasyprint'
+                'html2pdf': 'weasyprint',
+                'html2md': 'html-to-markdown'
             }
 
             # Use default if no preference set

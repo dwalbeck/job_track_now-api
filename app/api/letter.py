@@ -374,7 +374,7 @@ async def write_cover_letter(
         logger.info(f"Generating cover letter", cover_id=cover_id, company=result.company, job_title=result.job_title)
 
         # Initialize AI agent and generate cover letter
-        ai_agent = AiAgent(db)
+        ai_agent = AiAgent(db, user_id)
         ai_result = ai_agent.write_cover_letter(
             letter_tone=result.letter_tone,
             letter_length=result.letter_length,

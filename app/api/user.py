@@ -573,6 +573,7 @@ def get_user_setting(user_id: int, db: Session) -> UserSettingResponse:
         SELECT user_id, no_response_week, docx2html, odt2html, pdf2html,
                html2docx, html2odt, html2pdf, default_llm, resume_extract_llm,
                job_extract_llm, rewrite_llm, cover_llm, company_llm, tools_llm,
+               culture_llm, question_llm, stt_llm,
                openai_api_key, tinymce_api_key, convertapi_key
         FROM user_setting
         WHERE user_id = :user_id
@@ -602,6 +603,9 @@ def get_user_setting(user_id: int, db: Session) -> UserSettingResponse:
         cover_llm=result.cover_llm,
         company_llm=result.company_llm,
         tools_llm=result.tools_llm,
+        culture_llm=result.culture_llm,
+        question_llm=result.question_llm,
+        stt_llm=result.stt_llm,
         openai_api_key=result.openai_api_key,
         tinymce_api_key=result.tinymce_api_key,
         convertapi_key=result.convertapi_key
@@ -620,7 +624,8 @@ async def get_user_setting_endpoint(
     Requires authentication. Users can only access their own settings.
     """
     # Verify user can only access their own settings
-    if token_user_id != user_id:
+    # token_user_id is a string from JWT, user_id is int from query param
+    if int(token_user_id) != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot access settings for another user"
@@ -724,6 +729,15 @@ async def create_or_update_user_setting(
             if setting_data.tools_llm is not None:
                 update_fields.append("tools_llm = :tools_llm")
                 params["tools_llm"] = setting_data.tools_llm
+            if setting_data.culture_llm is not None:
+                update_fields.append("culture_llm = :culture_llm")
+                params["culture_llm"] = setting_data.culture_llm
+            if setting_data.question_llm is not None:
+                update_fields.append("question_llm = :question_llm")
+                params["question_llm"] = setting_data.question_llm
+            if setting_data.stt_llm is not None:
+                update_fields.append("stt_llm = :stt_llm")
+                params["stt_llm"] = setting_data.stt_llm
             if setting_data.openai_api_key is not None:
                 update_fields.append("openai_api_key = :openai_api_key")
                 params["openai_api_key"] = setting_data.openai_api_key
@@ -745,7 +759,7 @@ async def create_or_update_user_setting(
                 INSERT INTO user_setting (
                     user_id, no_response_week, docx2html, odt2html, pdf2html,
                     html2docx, html2odt, html2pdf, default_llm, resume_extract_llm,
-                    job_extract_llm, rewrite_llm, cover_llm, company_llm, tools_llm,
+                    job_extract_llm, rewrite_llm, cover_llm, company_llm, tools_llm, culture_llm, question_llm, stt_llm, 
                     openai_api_key, tinymce_api_key, convertapi_key
                 ) VALUES (
                     :user_id,
@@ -763,6 +777,9 @@ async def create_or_update_user_setting(
                     COALESCE(:cover_llm, 'gpt-4.1-mini'),
                     COALESCE(:company_llm, 'gpt-5.2'),
                     COALESCE(:tools_llm, 'gpt-4o-mini'),
+                    COALESCE(:culture_llm, 'gpt-4o-mini'),
+                    COALESCE(:question_llm, 'gpt-4o-mini'),
+                    COALESCE(:stt_llm, 'gpt-4o-mini-transcribe'),
                     :openai_api_key,
                     :tinymce_api_key,
                     :convertapi_key
@@ -784,6 +801,9 @@ async def create_or_update_user_setting(
                 "cover_llm": setting_data.cover_llm,
                 "company_llm": setting_data.company_llm,
                 "tools_llm": setting_data.tools_llm,
+                "culture_llm": setting_data.culture_llm,
+                "question_llm": setting_data.question_llm,
+                "stt_llm": setting_data.stt_llm,
                 "openai_api_key": setting_data.openai_api_key,
                 "tinymce_api_key": setting_data.tinymce_api_key,
                 "convertapi_key": setting_data.convertapi_key

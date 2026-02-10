@@ -19,6 +19,9 @@ class UserSettingRequest(BaseModel):
     cover_llm: Optional[str] = None
     company_llm: Optional[str] = None
     tools_llm: Optional[str] = None
+    culture_llm: Optional[str] = None
+    question_llm: Optional[str] = None
+    stt_llm: Optional[str] = None
     openai_api_key: Optional[str] = None
     tinymce_api_key: Optional[str] = None
     convertapi_key: Optional[str] = None
@@ -41,6 +44,9 @@ class UserSettingResponse(BaseModel):
     cover_llm: Optional[str] = None
     company_llm: Optional[str] = None
     tools_llm: Optional[str] = None
+    culture_llm: Optional[str] = None
+    question_llm: Optional[str] = None
+    stt_llm: Optional[str] = None
     openai_api_key: Optional[str] = None
     tinymce_api_key: Optional[str] = None
     convertapi_key: Optional[str] = None

@@ -6,8 +6,10 @@ from fastapi import HTTPException, BackgroundTasks
 from pathlib import Path
 from openai import OpenAI
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, Boolean
+from typing import List
 from starlette.responses import JSONResponse
+from sympy.categories import Object
 
 from ..core.config import settings
 from ..core.database import SessionLocal
@@ -20,20 +22,22 @@ class AiAgent:
 	AI Agent class for handling resume analysis and processing using OpenAI API.
 	"""
 
-	def __init__(self, db: Session):
+	def __init__(self, db: Session, user_id: int = None):
 		"""
 		Initialize the AI Agent with database session.
 
 		Args:
 			db: SQLAlchemy database session
+			user_id: Current user's ID for loading user-specific settings
 		"""
 		self.db = db
 
-		# Load LLM settings and API keys from database first
-		# This will update settings.openai_api_key if it exists in the database
-		settings.load_llm_settings_from_db(db)
+		# Load LLM settings and API keys from database for this user
+		# This updates the global settings object with user-specific values
+		if user_id:
+			settings.load_llm_settings_from_db(db, user_id)
 
-		# Now set instance variables from settings (using DB values if they were loaded)
+		# Set instance variables from settings (now includes user's DB values if loaded)
 		self.api_key = settings.openai_api_key
 		self.project = settings.openai_project
 
@@ -45,6 +49,8 @@ class AiAgent:
 		self.cover_llm = settings.cover_llm
 		self.company_llm = settings.company_llm
 		self.tools_llm = settings.tools_llm
+		self.culture_llm = settings.culture_llm
+		self.question_llm = settings.question_llm
 
 		# Initialize OpenAI client with timeout
 		client_kwargs = {
@@ -110,7 +116,7 @@ class AiAgent:
 		if result:
 			return result
 
-		# Attempt 2: Extract from markdown code blocks using balanced brace matching
+		# Attempt 2: Extract from HTML code blocks using balanced brace matching
 		# First, find the code block
 		code_block_match = re.search(r'```(?:json)?\s*(\{.+)', response_text, re.DOTALL)
 		if code_block_match:
@@ -671,7 +677,7 @@ class AiAgent:
 
 		except ValueError as e:
 			# Log and re-raise with context
-			logger.error(f"Failed to parse resume rewrite response", error=str(e), response_preview=response_text[:200])
+			logger.error(f"Failed to parse resume rewrite response", error=str(e), response_preview=response_text)
 			raise
 
 	def html_styling_diff(
@@ -1325,4 +1331,254 @@ class AiAgent:
 		result = json.loads(response_text)
 
 		return result
+
+	def company_culture_report(self, company_id: int, company_name: str, website_url: str, linkedin_url: str) -> str:
+		"""
+		Research company using AI and generate a report on the company culture
+
+		This method runs the following operations:
+		1. Uses AI to generate a company culture report
+		2. Updates the company record with the culture report markdown
+		3. Marks process as completed or failed
+
+		Args:
+			company_id: ID of the company to research
+			company_name: Name of the company
+			website_url: URL of the company's website
+			linkedin_url: URL of the company's LinkedIn profile
+		"""
+		# Create a new database session for this background task
+		db = SessionLocal()
+
+		try:
+			logger.info(f"Starting company culture report process", company_id=company_id)
+
+			# Load the prompt template
+			prompt_template = self._load_prompt('culture_report')
+
+			# Format the prompt with company information
+			prompt = prompt_template.replace('{company_name}', company_name)
+			prompt = prompt.replace('{linkedin_url}', linkedin_url or "")
+			prompt = prompt.replace('{website_url}', website_url or "")
+
+			logger.info(f"Calling OpenAI for company culture report", company_id=company_id)
+
+			# Make API call to OpenAI
+			response = self.client.chat.completions.create(
+				model=self.culture_llm,
+				messages=[
+					{"role": "system", "content": "Expert company researcher and career coach. You create comprehensive reports on company culture and guiding principals which is formatted using Markdown."},
+					{"role": "user", "content": prompt}
+				]
+			)
+
+			# Extract the response content
+			response_text = response.choices[0].message.content.strip()
+			result = json.loads(response_text)
+			if not result or not result.get('culture_report'):
+				logger.error(f"Empty value for culture report", company_id=company_id)
+				raise ValueError("Failed to populate culture report from AI call")
+
+			logger.info(f"Company culture report process completed successfully", company_id=company_id)
+			return result.get('culture_report', '')
+
+		except Exception as e:
+			logger.error(f"Error during company culture report process", company_id=company_id, error=str(e))
+			return "Error"
+		finally:
+			db.close()
+
+	def interview_questions(self, job_id: int, company_id: int, user_id: int) -> List[{str, str}]:
+		"""
+		This method makes the AI call to create a question list for use with an interview.
+
+		:param job_id: The job associated with this interview
+		:param company_id:
+		:param user_id:
+		:return:
+		"""
+		try:
+			logger.debug(f"Starting AIAgent call for interview questions", company_id=company_id, job_id=job_id, user_id=user_id)
+
+			db = SessionLocal()
+
+			# Retrieve the data to feed to the OpenAI call
+			query = text("""
+				SELECT jd.job_desc, c.culture_report, rd.resume_md_rewrite 
+				FROM job j JOIN job_detail jd ON (j.job_id=jd.job_id) JOIN company c ON (jd.job_id=c.job_id) JOIN resume_detail rd ON (j.resume_id=rd.resume_id) 
+				WHERE j.job_id = :job_id AND j.user_id = :user_id
+				""")
+			result = db.execute(query, {"job_id": job_id, "user_id": user_id}).first()
+			if not result:
+				logger.error(f"Failed retrieving data for prompt call", company_id=company_id)
+				raise ValueError("Failed retrieving data for prompt call")
+
+			if not result.job_desc or not result.culture_report or not result.resume_md_rewrite:
+				logger.error(f"Missing at least one of: job_desc, culture_report, resume_md_rewrite", job_id=job_id)
+				raise ValueError("Failed retrieving data for questions call prompt")
+
+			# Load the prompt template
+			prompt_template = self._load_prompt('interview_questions')
+
+			# Format the prompt with company information
+			prompt = prompt_template.replace('{job_desc}', result.job_desc)
+			prompt = prompt.replace('{culture_report}', result.culture_report)
+			prompt = prompt.replace('{resume_md_rewrite}', result.resume_md_rewrite)
+
+			logger.info(f"Calling OpenAI for interview question generation", company_id=company_id)
+
+			# Make API call to OpenAI
+			response = self.client.chat.completions.create(
+				model=self.question_llm,
+				messages=[
+					{"role": "system",
+					 "content": "Hiring manager for company. You write interview questions to use for an upcoming interview."},
+					{"role": "user", "content": prompt}
+				],
+				response_format={"type": "json_object"}
+			)
+
+			# Extract the response content
+			response_text = response.choices[0].message.content.strip()
+			logger.debug(f"Raw AI response for interview questions", response_length=len(response_text), response_preview=response_text[:500])
+
+			if not response_text:
+				raise ValueError("Empty response from OpenAI for interview questions")
+
+			result = json.loads(response_text)
+			return result['questions']
+		except Exception as e:
+			logger.error(f"Error during AIAgent call for interview questions process", company_id=company_id, job_id=job_id, error=str(e))
+			raise
+
+
+	def interview_answer(self, interview_id: int, question: str, answer: str, answer_note: str, p_question: str, p_answer: str, p_answer_note: str) -> {str, str}:
+		"""
+		This method makes an AI call that will process an answer to a question and score it
+
+		:param interview_id: The primary key for the interview record
+		:param question: The text for the question asked
+		:param answer: The text for the answer given
+		:param answer_note: Guidance on handling the answer
+		:param p_question: The parent question
+		:param p_answer: the parent question answer
+		:param p_answer_note: the parent question answer note
+		:return:
+		"""
+		db = SessionLocal()
+
+		followup = None
+		followup_answer = None
+		followup_answer_note = None
+
+		# check if parent question was passed
+		if p_question:
+			followup = question
+			followup_answer = answer
+			followup_answer_note = answer_note
+			question = p_question
+			answer = p_answer
+			answer_note = p_answer_note
+
+
+		# Retrieve the data to feed to the OpenAI call
+		query = text("""
+			SELECT jd.job_desc, c.culture_report, rd.resume_md_rewrite 
+			FROM interview i 
+			    JOIN job j ON (i.job_id=j.job_id) 
+                JOIN job_detail jd ON (i.job_id=jd.job_id) 
+                JOIN company c ON (i.company_id=c.company_id) 
+                JOIN resume_detail rd ON (j.resume_id=rd.resume_id) 
+			WHERE i.interview_id = :interview_id
+			""")
+		result = db.execute(query, {"interview_id": interview_id}).first()
+		if not result:
+			logger.error(f"Failed retrieving data for interview questions process", interview_id=interview_id)
+			return None
+
+		# Load the prompt template
+		prompt_template = self._load_prompt('interview_answer')
+
+		# Format the prompt with company information
+		prompt = prompt_template.replace('{job_desc}', result.job_desc)
+		prompt = prompt.replace('{culture_report}', result.culture_report)
+		prompt = prompt.replace('{resume_md_rewrite}', result.resume_md_rewrite)
+		prompt = prompt.replace('{question}', question)
+		prompt = prompt.replace('{answer}', answer)
+		prompt = prompt.replace('{answer_note}', answer_note)
+		prompt = prompt.replace('{followup}', followup)
+		prompt = prompt.replace('{followup_answer}', followup_answer)
+		prompt = prompt.replace('{followup_answer_note}', followup_answer_note)
+
+		logger.info(f"Calling OpenAI for interview question answer evaluation", interview_id=interview_id)
+
+		# Make API call to OpenAI
+		response = self.client.chat.completions.create(
+			model=self.question_llm,
+			messages=[
+				{"role": "system",
+				 "content": "Hiring manager for company. You evaluate an answer to a interview question and provide scoring and feedback."},
+				{"role": "user", "content": prompt}
+			],
+			response_format={"type": "json_object"}
+		)
+
+		# Extract the response content
+		response_text = response.choices[0].message.content.strip()
+		ai_result = json.loads(response_text)
+
+		logger.info(f"Completed the AI call to create questions", response=ai_result[:500])
+
+		return ai_result
+
+	def review_interview(self, interview_id: int, summary_report: str) -> {str, str}:
+		logger.info(f"Starting AI call to give interview assessment", interview_id=interview_id)
+
+		db = SessionLocal()
+		# Retrieve the data to feed to the OpenAI call
+		query = text("""
+             SELECT jd.job_desc, c.culture_report, rd.resume_md_rewrite
+             FROM interview i
+                  JOIN job j ON (i.job_id = j.job_id)
+                  JOIN job_detail jd ON (j.job_id = jd.job_id)
+                  JOIN company c ON (i.company_id = c.company_id)
+                  JOIN resume_detail rd ON (j.resume_id = rd.resume_id)
+             WHERE i.interview_id = :interview_id
+         """)
+		result = db.execute(query, {"interview_id": interview_id}).first()
+		if not result:
+			logger.error(f"Failed retrieving data for interview review assessment", interview_id=interview_id)
+			return None
+
+		# Load the prompt template
+		prompt_template = self._load_prompt('interview_review')
+
+		# Format the prompt with company information
+		prompt = prompt_template.replace('{job_desc}', result.job_desc)
+		prompt = prompt.replace('{culture_report}', result.culture_report)
+		prompt = prompt.replace('{resume_md_rewrite}', result.resume_md_rewrite)
+		prompt = prompt.replace('{summary_report}', summary_report)
+
+		logger.info(f"Calling OpenAI for interview question answer evaluation", interview_id=interview_id)
+
+		# Make API call to OpenAI
+		response = self.client.chat.completions.create(
+			model=self.question_llm,
+			messages=[
+				{"role": "system",
+				 "content": "Hiring manager for technology company. Review candidate interview notes and provide scoring and feedback."},
+				{"role": "user", "content": prompt}
+			],
+			response_format={"type": "json_object"}
+		)
+
+		# Extract the response content
+		response_text = response.choices[0].message.content.strip()
+		ai_result = json.loads(response_text)
+
+		return ai_result
+
+
+
+
 

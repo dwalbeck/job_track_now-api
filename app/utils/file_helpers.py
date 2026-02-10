@@ -164,6 +164,10 @@ def create_standardized_download_file(
     elif file_type == 'cover_letter':
         extension = '.docx'
         download_filename = f"cover_letter-{name_part}{extension}"
+    elif file_type == 'audio':
+	    # combine interview_id and question_id for name of file
+        path_part = source_file_path.split('/')
+        download_filename = f"{path_part[-2]}-{path_part[-1]}"
     else:
         download_filename = f"{file_type}-{name_part}{extension}"
 

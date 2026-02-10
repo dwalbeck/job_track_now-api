@@ -30,6 +30,9 @@ class OutputFormat(str, Enum):
 class ConvertRequest(BaseModel):
     file_name: str
 
+class Html2MdRequest(BaseModel):
+    resume_id: str
+
 
 class ConvertResponse(BaseModel):
     file_content: str
@@ -336,12 +339,12 @@ async def convert_final(
 
         # Query to get resume data
         query = text("""
-	         SELECT r.file_name, rd.resume_html_rewrite, rr.file_name AS orig_file_name, rr.original_format
-	         FROM resume r
-	                  JOIN resume_detail rd ON (r.resume_id = rd.resume_id)
-	                  JOIN resume rr ON (r.baseline_resume_id = rr.resume_id)
-	         WHERE r.resume_id = :resume_id AND r.user_id = :user_id
-	         """)
+             SELECT r.file_name, rd.resume_html_rewrite, rr.file_name AS orig_file_name, rr.original_format
+             FROM resume r
+                      JOIN resume_detail rd ON (r.resume_id = rd.resume_id)
+                      JOIN resume rr ON (r.baseline_resume_id = rr.resume_id)
+             WHERE r.resume_id = :resume_id AND r.user_id = :user_id
+             """)
 
         result = db.execute(query, {"resume_id": request.resume_id, "user_id": user_id}).first()
 
@@ -450,8 +453,8 @@ async def convert_file(
 
     Args:
         request: ConvertFileRequest with resume_id, source_format, target_format
-        current_user: Current user dict from JWT
         db: Database session
+        user_id: Current user ID from JWT
 
     Returns:
         ConvertFileResponse with file name and content
@@ -469,11 +472,10 @@ async def convert_file(
 
         # Query to get resume data
         query = text("""
-            SELECT r.file_name, r.original_format, r.is_baseline, rd.resume_html, rd.resume_html_rewrite 
+            SELECT r.file_name, r.original_format, r.is_baseline, rd.resume_html, rd.resume_html_rewrite, rd.resume_markdown, rd.resume_md_rewrite  
             FROM resume r LEFT JOIN resume_detail rd ON (r.resume_id=rd.resume_id) 
             WHERE r.resume_id = :resume_id AND r.user_id = :user_id
         """)
-
         result = db.execute(query, {"resume_id": request.resume_id, "user_id": user_id}).first()
 
         if not result:
@@ -503,33 +505,29 @@ async def convert_file(
             output_path = os.path.join(resume_dir, output_file_name)
 
         elif source_format in ['md', 'html']:
+            input_file_name = change_file_extension(file_name, '', source_format)
+            input_data = None
             if source_format == 'html':
-                input_file_name = change_file_extension(file_name, '', source_format)
-            else:
-                input_file_name = change_file_extension(file_name, '', 'md')
-
-            input_path = os.path.join(resume_dir, input_file_name)
-
-            # check if file exists on disk, if not, write to disk
-            if not os.path.exists(input_path):
-                logger.debug(f"HTML file not found on disk, retrieving from database", resume_id=request.resume_id, file_name=input_file_name)
-
                 if not result.resume_html and not result.resume_html_rewrite:
                     logger.error(f"No HTML content found in database", resume_id=request.resume_id)
-                    raise HTTPException(status_code=404, detail=f"No HTML content found for resume_id: {request.resume_id}")
+                    raise HTTPException(status_code=404,
+                                        detail=f"No HTML content found for resume_id: {request.resume_id}")
 
-                # Create directory if it doesn't exist
-                os.makedirs(os.path.dirname(input_path), exist_ok=True)
+                input_data = result.resume_html_rewrite or result.resume_html
+            else:
+                if not result.resume_markdown and not result.resume_md_rewrite:
+                    logger.error(f"No Markdown content found in database", resume_id=request.resume_id)
+                    raise HTTPException(status_code=404,
+                                        detail=f"No Markdown content found for resume_id: {request.resume_id}")
 
-                tmp_content = result.resume_html_rewrite
-                if not tmp_content:
-                    tmp_content = result.resume_html
+                input_data = result.resume_md_rewrite or result.resume_markdown
 
-                # Write HTML content to disk
-                with open(input_path, 'w', encoding='utf-8') as f:
-                    f.write(tmp_content)
+            input_path = os.path.join(resume_dir, input_file_name)
+            # Write HTML or Markdeown content to disk
+            with open(input_path, 'w', encoding='utf-8') as f:
+                f.write(input_data)
 
-                logger.debug(f"HTML content written to disk", file_path=input_path)
+            logger.debug(f"HTML/MD content written to disk", file_path=input_path)
 
             output_file_name = change_file_extension(input_file_name, '-final', target_format)
             output_path = os.path.join(resume_dir, output_file_name)
@@ -545,12 +543,15 @@ async def convert_file(
             target_format=target_format,
             input_path=input_path,
             output_path=output_path,
-	        user_id=user_id
+            user_id=user_id
         )
 
         if not conversion_success:
             logger.error(f"Conversion failed", resume_id=request.resume_id)
             raise HTTPException(status_code=500, detail="File conversion failed")
+
+        logger.debug(f"Conversion succeeded", resume_id=request.resume_id)
+        file_content = ""
 
         # Update resume_detail with the converted filename so it can be downloaded
         # Only for binary output formats (docx, odt, pdf) that need to be downloaded via /files/resumes
@@ -570,19 +571,22 @@ async def convert_file(
                             output_path=output_path)
                 raise HTTPException(status_code=500, detail="File conversion succeeded but file not saved to disk")
 
-        # Read file content for md and html targets
-        file_content = ""
-        if target_format in ['md', 'html']:
+        elif target_format in ['md', 'html']:
             try:
                 with open(output_path, 'r', encoding='utf-8') as f:
                     file_content = f.read()
                 logger.debug(f"File content read successfully", file_size=len(file_content))
+
+                if target_format == 'md':
+                    update_query = text("UPDATE resume_detail SET resume_md_rewrite = :markdown WHERE resume_id = :resume_id")
+                    db.execute(update_query, {"markdown": file_content, "resume_id": request.resume_id})
+                    db.commit()
+
             except Exception as e:
                 logger.error(f"Error reading converted file", error=str(e))
                 raise HTTPException(status_code=500, detail=f"Error reading converted file: {str(e)}")
 
-        logger.info(f"File conversion completed successfully", resume_id=request.resume_id,
-                   output_file=output_file_name)
+        logger.info(f"File conversion completed successfully", resume_id=request.resume_id, output_file=output_file_name)
 
         return ConvertFileResponse(file=output_file_name, file_content=file_content)
 

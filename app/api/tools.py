@@ -67,7 +67,7 @@ async def elevator_pitch(
 			resume = result[0]
 
 		# Initialize AI agent with database session
-		ai_agent = AiAgent(db)
+		ai_agent = AiAgent(db, user_id)
 
 		logger.debug(f"Calling AI agent elevator_pitch", job_id=request.job_id, user_id=user_id)
 		# Generate elevator pitch using AI
@@ -107,7 +107,7 @@ async def rewrite_text(
 
 	try:
 		# Initialize AI agent with database session
-		ai_agent = AiAgent(db)
+		ai_agent = AiAgent(db, user_id)
 
 		logger.debug(f"Calling AI agent rewrite_blob", user_id=user_id)
 		# Rewrite text using AI

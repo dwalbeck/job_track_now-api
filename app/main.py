@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .core.config import settings
-from .api import jobs, contacts, calendar, notes, resume, convert, letter, files, reminder, export, process, company, openai_api, tools, oauth, user
+from .api import calendar, company, contacts, convert, export, files, interview, jobs, letter, notes, oauth, openai_api, resume, reminder, process, tools, user
 from .middleware import LoggingMiddleware, JWTAuthMiddleware
 from .utils.logger import logger
 
@@ -122,6 +122,7 @@ app.include_router(contacts.router, prefix="/v1", tags=["contacts"])
 app.include_router(convert.router, prefix="/v1", tags=["convert"])
 app.include_router(export.router, prefix="/v1", tags=["export"])
 app.include_router(files.router, prefix="/v1", tags=["files"])
+app.include_router(interview.router, prefix="/v1", tags=["interview"])
 app.include_router(jobs.router, prefix="/v1", tags=["jobs"])
 app.include_router(letter.router, prefix="/v1", tags=["letter"])
 app.include_router(openai_api.router, prefix="/v1", tags=["openai"])

@@ -314,7 +314,7 @@ async def search_company(
 
 	try:
 		# Initialize AI agent and perform company search
-		ai_agent = AiAgent(db)
+		ai_agent = AiAgent(db, user_id)
 		search_results = ai_agent.company_search(company_id)
 
 		logger.info(f"Company search completed", company_id=company_id, results_count=len(search_results))
@@ -377,12 +377,15 @@ async def research_company(
 	# Start background task for AI research in a separate thread
 	# IMPORTANT: The thread must NOT use the request-scoped database session
 	# to avoid keeping the HTTP connection open
+	# Capture user_id for the thread
+	thread_user_id = user_id
+
 	def run_research():
 		# Create a new database session for the thread
 		# DO NOT use the request-scoped 'db' session
 		thread_db = SessionLocal()
 		try:
-			thread_ai_agent = AiAgent(thread_db)
+			thread_ai_agent = AiAgent(thread_db, thread_user_id)
 			thread_ai_agent.company_research_process(company_id, process_id)
 		finally:
 			thread_db.close()
@@ -503,3 +506,56 @@ async def download_company_report(
 	except Exception as e:
 		logger.error(f"Error converting company report to DOCX", company_id=company_id, error=str(e))
 		raise HTTPException(status_code=500, detail=f"Failed to generate report: {str(e)}")
+
+@router.get("/company/culture/{company_id}", status_code=status.HTTP_200_OK)
+async def culture_report_process(
+	company_id: int,
+	db: Session = Depends(get_db),
+	user_id: int = Depends(get_current_user)
+):
+	"""
+	This endpoint will trigger an OpenAI call that will create report on company culture and values
+
+	company_id: the ID of the company to do the report on
+	db: database handle
+	user_id: The current JWT user
+
+	response:
+		200
+	"""
+	try:
+		logger.info(f"Starting /v1/company/culture - company culture report process", company_id=company_id)
+
+		# retrieve the company name, website_url and linkedin_url values
+		query = text("SELECT company_name, website_url, linkedin_url, culture_report FROM company WHERE company_id = :company_id AND user_id = :user_id")
+		result = db.execute(query, {"company_id": company_id, "user_id": user_id}).fetchone()
+		if not result:
+			logger.error(f"Company record not found in DB", company_id=company_id, user_id=user_id)
+			raise HTTPException(status_code=404, detail=f"Company with id {company_id} not found")
+
+		# skip creating report if one already exists
+		if result.culture_report:
+			return status.HTTP_200_OK
+
+		co_name = result.company_name
+		website = result.website_url or ""
+		linkedin = result.linkedin_url or ""
+
+		ai_agent = AiAgent(db, user_id)
+		culture_report = ai_agent.company_culture_report(company_id, co_name, website, linkedin)
+		if culture_report == "Error":
+			logger.error(f"Missing company culture report after AI call", company_id=company_id)
+			raise HTTPException(status_code=500, detail=f"Missing company culture report after AI call")
+
+
+		# Save culture report to company record
+		update_query = text("UPDATE company SET culture_report = :culture_report WHERE company_id = :company_id")
+		db.execute(update_query, {"company_id": company_id, "culture_report": culture_report})
+		db.commit()
+
+		logger.info(f"Finished company culture report process", company_id=company_id)
+		return status.HTTP_200_OK
+
+	except Exception as e:
+		logger.error(f"Failed on executing company culture report", company_id=company_id)
+		raise

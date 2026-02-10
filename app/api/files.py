@@ -116,18 +116,12 @@ async def download_resume(
         result = db.execute(query, {"file_name": file_name, "user_id": user_id}).first()
         if not result:
             logger.warning(f"Resume file not found or not owned by user", file_name=file_name, user_id=user_id)
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"File not found: {file_name}"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {file_name}" )
 
         file_path = os.path.join(settings.resume_dir, file_name)
 
         if not os.path.exists(file_path):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"File not found: {file_name}"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"File not found: {file_name}")
 
         # Create standardized download file
         tmp_path, download_name, mime_type = create_standardized_download_file(
@@ -137,9 +131,7 @@ async def download_resume(
             user_id=user_id
         )
 
-        logger.info(f"Serving resume file",
-                   original=file_name,
-                   download_name=download_name)
+        logger.info(f"Serving resume file", original=file_name, download_name=download_name)
 
         return FileResponse(
             path=tmp_path,
@@ -266,14 +258,8 @@ async def serve_logo(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error serving logo file",
-                    file_name=file_name,
-                    error=str(e),
-                    user_id=user_id)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error serving logo file: {str(e)}"
-        )
+        logger.error(f"Error serving logo file", file_name=file_name, error=str(e), user_id=user_id)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error serving logo file: {str(e)}")
 
 
 @router.get("/files/reports/{file_name}")

@@ -1,14 +1,21 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, status, Depends
+from sqlalchemy.orm import Session
+from sqlalchemy import text
 import httpx
 from typing import List
 from ..core.config import settings
+from ..core.database import get_db
+from ..middleware.auth_middleware import get_current_user
 from ..utils.logger import logger
 
 router = APIRouter()
 
 
 @router.get("/openai/llm", response_model=List[str])
-async def get_llm_models():
+async def get_llm_models(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user)
+):
     """
     Fetch and return list of available OpenAI LLM models.
 
@@ -19,16 +26,29 @@ async def get_llm_models():
     Returns:
         List[str]: List of model IDs sorted by creation date (newest first)
     """
-    logger.info("Fetching LLM models from OpenAI API")
+    logger.info("Fetching LLM models from OpenAI API", user_id=user_id)
+
+    # Get user's API key from their settings
+    query = text("SELECT openai_api_key FROM user_setting WHERE user_id = :user_id")
+    result = db.execute(query, {"user_id": int(user_id)}).first()
+
+    if not result or not result.openai_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="OpenAI API key not configured. Please set your API key in Settings."
+        )
+
+    api_key = result.openai_api_key
 
     try:
+        headers = {"Authorization": f"Bearer {api_key}"}
+        if settings.openai_project:
+            headers["OpenAI-Project"] = settings.openai_project
+
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 "https://api.openai.com/v1/models",
-                headers={
-                    "Authorization": f"Bearer {settings.openai_api_key}",
-                    "OpenAI-Project": settings.openai_project
-                },
+                headers=headers,
                 timeout=30.0
             )
 

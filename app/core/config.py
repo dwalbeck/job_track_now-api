@@ -1,6 +1,7 @@
 from typing import List, Union
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
 	# Pydantic v2 configuration
 	model_config = SettingsConfigDict(
@@ -30,6 +31,7 @@ class Settings(BaseSettings):
 	export_dir: str
 	logo_dir: str
 	report_dir: str
+	interview_dir: str
 
 	backend_url: str
 
@@ -55,6 +57,9 @@ class Settings(BaseSettings):
 	cover_llm: str = "gpt-4.1-mini"
 	company_llm: str = "gpt-4.1-mini"
 	tools_llm: str = "gpt-4.1-mini"
+	culture_llm: str = "gpt-4.1-mini"
+	question_llm: str = "gpt-4.1-mini"
+	stt_llm: str = "gpt-4o-mini-transcribe"
 
 	def get_allowed_origins(self) -> List[str]:
 		if isinstance(self.allowed_origins, str):
@@ -67,28 +72,24 @@ class Settings(BaseSettings):
 				return [self.allowed_origins]
 		return self.allowed_origins
 
-	def load_llm_settings_from_db(self, db, user_id: int = None):
+	def load_llm_settings_from_db(self, db, user_id: int):
 		"""
 		Load LLM settings and API keys from the user_setting table in the database.
 		Updates the settings object with the database values if they exist.
 
 		Args:
 			db: Database session
-			user_id: The user's ID. If None, uses the first user found.
+			user_id: Current User ID from JWT
 		"""
 		from sqlalchemy import text
-		try:
-			if not user_id:
-				# Get first user if no user_id provided
-				user_query = text("SELECT user_id FROM users ORDER BY user_id LIMIT 1")
-				user_result = db.execute(user_query).first()
-				if user_result:
-					user_id = user_result.user_id
-				else:
-					return  # No users, use defaults
+		# Import logger inside method to avoid circular import
+		from ..utils.logger import logger
 
+		try:
 			query = text("""
-				SELECT default_llm, job_extract_llm, rewrite_llm, cover_llm, resume_extract_llm, company_llm, tools_llm, openai_api_key
+				SELECT default_llm, job_extract_llm, rewrite_llm, cover_llm,
+				       resume_extract_llm, company_llm, tools_llm, culture_llm,
+				       question_llm, openai_api_key
 				FROM user_setting
 				WHERE user_id = :user_id
 			""")
@@ -109,11 +110,14 @@ class Settings(BaseSettings):
 					self.company_llm = result.company_llm
 				if result.tools_llm:
 					self.tools_llm = result.tools_llm
+				if result.culture_llm:
+					self.culture_llm = result.culture_llm
+				if result.question_llm:
+					self.question_llm = result.question_llm
 				if result.openai_api_key:
 					self.openai_api_key = result.openai_api_key
-		except Exception:
-			# If there's an error querying the DB, use defaults
-			pass
+		except Exception as e:
+			logger.error(f"Failed getting settings for current user", user_id=user_id, error=str(e))
 
 
 settings = Settings()
