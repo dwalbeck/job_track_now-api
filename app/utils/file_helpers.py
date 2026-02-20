@@ -4,9 +4,18 @@ import shutil
 import mimetypes
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from openai import OpenAI
 from .logger import logger
 from .user_helper import get_user_name
 from ..models.models import Resume
+from ..core.database import get_db, SessionLocal
+from ..core.config import settings
+
+
+def change_filename(orig: str, filename: str) -> str:
+    parts = orig.rsplit('.', 1)
+    ret_file = f"{filename}.{parts[0]}"
+    return ret_file
 
 
 def change_file_extension(filename: str, middle: str, extension: str) -> str:
@@ -165,7 +174,7 @@ def create_standardized_download_file(
         extension = '.docx'
         download_filename = f"cover_letter-{name_part}{extension}"
     elif file_type == 'audio':
-	    # combine interview_id and question_id for name of file
+        # combine interview_id and question_id for name of file
         path_part = source_file_path.split('/')
         download_filename = f"{path_part[-2]}-{path_part[-1]}"
     else:
@@ -191,3 +200,106 @@ def create_standardized_download_file(
     mime_type = get_mime_type(source_file_path)
 
     return (tmp_file_path, download_filename, mime_type)
+
+def get_all_question_audio(interview_id: int, user_id: int) -> bool:
+    """
+    This function will query all the question for an interview and make a TTS call for each, then save the sound file
+    :param interview_id: primary key for interview record
+    :param user_id: current JWT user
+    :return:
+    """
+    db = SessionLocal()
+    #os.environ["OPENAI_API_KEY"] = settings.openai_api_key
+    basepath = f'{settings.interview_dir}/{interview_id}'
+    if not os.path.exists(basepath):
+        os.makedirs(basepath)
+
+    logger.debug(f"Starting process to create question audio files", interview_id=interview_id)
+
+    try:
+        query = text("""
+            SELECT q.question, q.question_id 
+            FROM interview i JOIN question q ON (i.interview_id=q.interview_id) 
+            WHERE i.interview_id = :interview_id AND i.user_id = :user_id ORDER BY q.question_order 
+        """)
+        result = db.execute(query, {"interview_id": interview_id, "user_id": user_id}).fetchall()
+        if not result:
+            logger.error(f"Failed to retrieve interview questions", interview_id=interview_id, user_id=user_id, query=query)
+            return False
+
+        for question in result:
+            logger.debug(f"running question record", question_id=question.question_id)
+            filename = str(question.question_id) + '.mp3'
+            question_audio_file = basepath + '/' + filename
+
+            # execute the OpenAI Text to Speech API call
+            logger.debug(f"Making TTS call to OpenAI for audio file", audio_file=question_audio_file)
+            client = OpenAI(api_key=settings.openai_api_key)
+
+            response = client.audio.speech.create(
+                model="gpt-4o-mini-tts",
+                voice="alloy",
+                input=question.question
+            )
+            response.write_to_file(question_audio_file)
+
+            if not os.path.exists(question_audio_file):
+                logger.debug(f"Error - question audio file was not created", audio_file=question_audio_file)
+
+            logger.debug(f"finished generating sound file for question", question_id=question.question_id)
+
+        logger.debug(f"Completed creating audio files for each question", interview_id=interview_id)
+        return True
+    except Exception as e:
+        logger.error(f"An Error occurred while creating question audio files", interview_id=interview_id, error=str(e))
+        return False
+    finally:
+        db.close()
+
+def get_tts_audio(question_id: int, interview_id: int, text_str: str, statement: bool) -> str:
+    """
+    This function will query all the question for an interview and make a TTS call for each, then save the sound file
+    :param interview_id: primary key for interview record
+    :param question_id: the ID for the question that is targeted
+    :param text_str: the question text
+    :param statement: boolean marked true if a statement and false if a question
+    :return: full path to audio file
+    """
+    db = SessionLocal()
+    #os.environ["OPENAI_API_KEY"] = settings.openai_api_key
+    basepath = f'{settings.interview_dir}/{interview_id}'
+    if not os.path.exists(basepath):
+        os.makedirs(basepath)
+
+    logger.debug(f"Starting process to create audio file", interview_id=interview_id, statement=statement)
+
+    try:
+        filename = str(question_id) + '.mp3'
+        if statement:
+            filename = str(question_id) + '-s.mp3'
+        audio_file = basepath + '/' + filename
+
+        # execute the OpenAI Text to Speech API call
+        logger.debug(f"Making TTS call to OpenAI for audio file", audio_file=audio_file)
+        client = OpenAI(api_key=settings.openai_api_key)
+
+        response = client.audio.speech.create(
+            model="gpt-4o-mini-tts",
+            voice="alloy",
+            input=text_str
+        )
+        response.write_to_file(audio_file)
+
+        if not os.path.exists(audio_file):
+            logger.debug(f"Error - question audio file was not created", audio_file=audio_file)
+
+        logger.debug(f"finished generating sound file for question", question_id=question_id, audio_file=audio_file)
+        return audio_file
+
+    except Exception as e:
+        logger.error(f"An Error occurred while creating question audio files", interview_id=interview_id, error=str(e))
+        return "Error"
+    finally:
+        db.close()
+
+

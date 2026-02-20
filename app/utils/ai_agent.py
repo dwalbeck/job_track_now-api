@@ -1,20 +1,15 @@
-import os
 import json
 import sys
 import time
-from fastapi import HTTPException, BackgroundTasks
+from fastapi import HTTPException
 from pathlib import Path
 from openai import OpenAI
 from sqlalchemy.orm import Session
-from sqlalchemy import text, Boolean
-from typing import List
-from starlette.responses import JSONResponse
-from sympy.categories import Object
-
+from sqlalchemy import text
 from ..core.config import settings
 from ..core.database import SessionLocal
 from ..utils.logger import logger
-from ..utils.conversion import Conversion
+from ..utils.file_helpers import get_all_question_audio
 
 
 class AiAgent:
@@ -1388,13 +1383,15 @@ class AiAgent:
 		finally:
 			db.close()
 
-	def interview_questions(self, job_id: int, company_id: int, user_id: int) -> List[{str, str}]:
+	def interview_questions(self, job_id: int, company_id: int, user_id: int, interview_id: int, process_id: int) -> None:
 		"""
 		This method makes the AI call to create a question list for use with an interview.
 
 		:param job_id: The job associated with this interview
-		:param company_id:
-		:param user_id:
+		:param company_id: company for interview
+		:param user_id: current user
+		:param interview_id: ID for interview
+		:param process_id: ID for process
 		:return:
 		"""
 		try:
@@ -1440,98 +1437,152 @@ class AiAgent:
 
 			# Extract the response content
 			response_text = response.choices[0].message.content.strip()
-			logger.debug(f"Raw AI response for interview questions", response_length=len(response_text), response_preview=response_text[:500])
-
+			logger.debug(f"Raw AI response for interview questions", response_length=len(response_text), response=response_text[:100])
 			if not response_text:
+				logger.error(f"Empty response from OpenAI interview questions process", job_id=job_id)
 				raise ValueError("Empty response from OpenAI for interview questions")
 
 			result = json.loads(response_text)
-			return result['questions']
+			response = result
+			if result['questions']:
+				response = result['questions']
+
+			order = 1
+			logger.debug(f"Process each question in return list")
+			for question in response:
+				logger.debug(f"adding question to DB", order=order)
+
+				query = text("""
+                             INSERT INTO question (interview_id, question_order, question, answer_note, category)
+                             VALUES (:interview_id, :order, :question, :answer_note, :category)
+				             """)
+				result = db.execute(query, {
+					"interview_id": interview_id,
+					"order": order,
+					"question": question['question'],
+					"answer_note": question['answer_note'],
+					"category": question['category']
+				})
+				if not result:
+					logger.error(f"Failed to insert interview question", job_id=job_id)
+					raise ValueError("Failed inserting new question record")
+
+				logger.debug(f"successfully added question", order=order)
+				order += 2
+
+			# Commit questions to DB before creating audio files (audio function uses separate session)
+			db.commit()
+
+			logger.debug(f"Starting process to create question audio files", interview_id=interview_id)
+			audio = get_all_question_audio(interview_id, user_id)
+
+			if not audio:
+				logger.error(f"Failed to create question audio files", interview_id=interview_id)
+				raise HTTPException(status_code=500, detail="Failed to create question audio files")
+
+			# Step 7: Mark process as completed
+			update_process_query = text(
+				"UPDATE process SET completed = CURRENT_TIMESTAMP WHERE process_id = :process_id")
+			db.execute(update_process_query, {"process_id": process_id})
+			db.commit()
+
+			logger.info(f"Interview questions background process completed successfully", job_id=job_id, process_id=process_id)
+
 		except Exception as e:
 			logger.error(f"Error during AIAgent call for interview questions process", company_id=company_id, job_id=job_id, error=str(e))
 			raise
 
 
-	def interview_answer(self, interview_id: int, question: str, answer: str, answer_note: str, p_question: str, p_answer: str, p_answer_note: str) -> {str, str}:
+	def interview_answer(self, interview_id: int, question_id: int, answer: str) -> dict:
 		"""
 		This method makes an AI call that will process an answer to a question and score it
 
 		:param interview_id: The primary key for the interview record
-		:param question: The text for the question asked
+		:param question_id: Identifier for the question
 		:param answer: The text for the answer given
-		:param answer_note: Guidance on handling the answer
-		:param p_question: The parent question
-		:param p_answer: the parent question answer
-		:param p_answer_note: the parent question answer note
 		:return:
 		"""
-		db = SessionLocal()
+		try:
+			logger.debug(f"Starting AIAgent call for interview answer process", interview_id=interview_id, question_id=question_id)
+			db = SessionLocal()
 
-		followup = None
-		followup_answer = None
-		followup_answer_note = None
+			# Retrieve the data to feed to the OpenAI call
+			query = text("""
+				SELECT jd.job_desc, c.culture_report, rd.resume_md_rewrite, q.parent_question_id, q.question, q.answer_note, q.question_order, q.category, 
+				       p.question AS parent_question, p.answer_note AS parent_answer_note, p.answer AS parent_answer 
+				FROM interview i 
+				    JOIN job j ON (i.job_id=j.job_id) 
+	                JOIN job_detail jd ON (i.job_id=jd.job_id) 
+	                JOIN company c ON (i.company_id=c.company_id) 
+	                JOIN resume_detail rd ON (j.resume_id=rd.resume_id) 
+					JOIN question q ON (i.interview_id=q.interview_id AND q.question_id = :question_id) 
+					LEFT JOIN question p ON (q.parent_question_id = p.question_id AND q.parent_question_id IS NOT NULL) 
+				WHERE i.interview_id = :interview_id
+				""")
+			result = db.execute(query, {"interview_id": interview_id, "question_id": question_id}).first()
+			if not result:
+				logger.error(f"Failed retrieving data for interview answer process", interview_id=interview_id)
+				return None
 
-		# check if parent question was passed
-		if p_question:
-			followup = question
-			followup_answer = answer
-			followup_answer_note = answer_note
-			question = p_question
-			answer = p_answer
-			answer_note = p_answer_note
+			logger.debug(f"Retrieved question and AI call data", parent_question_id=result.parent_question_id)
 
+			followup = None
+			followup_answer = None
+			followup_answer_note = None
+			question = result.question
+			answer_note = result.answer_note
 
-		# Retrieve the data to feed to the OpenAI call
-		query = text("""
-			SELECT jd.job_desc, c.culture_report, rd.resume_md_rewrite 
-			FROM interview i 
-			    JOIN job j ON (i.job_id=j.job_id) 
-                JOIN job_detail jd ON (i.job_id=jd.job_id) 
-                JOIN company c ON (i.company_id=c.company_id) 
-                JOIN resume_detail rd ON (j.resume_id=rd.resume_id) 
-			WHERE i.interview_id = :interview_id
-			""")
-		result = db.execute(query, {"interview_id": interview_id}).first()
-		if not result:
-			logger.error(f"Failed retrieving data for interview questions process", interview_id=interview_id)
+			# check if parent question was passed
+			if result.parent_question_id:
+				logger.debug(f"Answer is a follow-up answer - adjusting fields")
+				followup = result.question
+				followup_answer = answer
+				followup_answer_note = result.answer_note
+				question = result.parent_question
+				answer = result.parent_answer
+				answer_note = result.parent_answer_note
+
+			# Load the prompt template
+			prompt_template = self._load_prompt('interview_answer')
+
+			# Format the prompt with company information
+			prompt = prompt_template.replace('{job_desc}', result.job_desc)
+			prompt = prompt.replace('{culture_report}', result.culture_report)
+			prompt = prompt.replace('{resume_md_rewrite}', result.resume_md_rewrite)
+			prompt = prompt.replace('{question}', question)
+			prompt = prompt.replace('{answer}', answer)
+			prompt = prompt.replace('{answer_note}', answer_note)
+			prompt = prompt.replace('{followup}', followup or "")
+			prompt = prompt.replace('{followup_answer}', followup_answer or "")
+			prompt = prompt.replace('{followup_answer_note}', followup_answer_note or "")
+
+			logger.info(f"Calling OpenAI for interview question answer evaluation", interview_id=interview_id)
+
+			# Make API call to OpenAI
+			response = self.client.chat.completions.create(
+				model=self.question_llm,
+				messages=[
+					{"role": "system",
+					 "content": "Hiring manager for company. You evaluate an answer to a interview question and provide scoring and feedback."},
+					{"role": "user", "content": prompt}
+				],
+				response_format={"type": "json_object"}
+			)
+
+			# Extract the response content
+			response_text = response.choices[0].message.content.strip()
+			logger.debug(f"done with AI call", response=response_text[:200])
+			ai_result = json.loads(response_text)
+
+			logger.info(f"Completed the AI call for answer evaluation", interview_id=interview_id, question_id=question_id)
+			return ai_result
+
+		except Exception as e:
+			logger.error(f"Error in interview_answer", error=str(e), interview_id=interview_id, question_id=question_id)
 			return None
 
-		# Load the prompt template
-		prompt_template = self._load_prompt('interview_answer')
 
-		# Format the prompt with company information
-		prompt = prompt_template.replace('{job_desc}', result.job_desc)
-		prompt = prompt.replace('{culture_report}', result.culture_report)
-		prompt = prompt.replace('{resume_md_rewrite}', result.resume_md_rewrite)
-		prompt = prompt.replace('{question}', question)
-		prompt = prompt.replace('{answer}', answer)
-		prompt = prompt.replace('{answer_note}', answer_note)
-		prompt = prompt.replace('{followup}', followup)
-		prompt = prompt.replace('{followup_answer}', followup_answer)
-		prompt = prompt.replace('{followup_answer_note}', followup_answer_note)
-
-		logger.info(f"Calling OpenAI for interview question answer evaluation", interview_id=interview_id)
-
-		# Make API call to OpenAI
-		response = self.client.chat.completions.create(
-			model=self.question_llm,
-			messages=[
-				{"role": "system",
-				 "content": "Hiring manager for company. You evaluate an answer to a interview question and provide scoring and feedback."},
-				{"role": "user", "content": prompt}
-			],
-			response_format={"type": "json_object"}
-		)
-
-		# Extract the response content
-		response_text = response.choices[0].message.content.strip()
-		ai_result = json.loads(response_text)
-
-		logger.info(f"Completed the AI call to create questions", response=ai_result[:500])
-
-		return ai_result
-
-	def review_interview(self, interview_id: int, summary_report: str) -> {str, str}:
+	def review_interview(self, interview_id: int, summary_report: str) -> dict:
 		logger.info(f"Starting AI call to give interview assessment", interview_id=interview_id)
 
 		db = SessionLocal()
@@ -1576,6 +1627,7 @@ class AiAgent:
 		response_text = response.choices[0].message.content.strip()
 		ai_result = json.loads(response_text)
 
+		logger.info(f"Finished AI call to give interview assessment")
 		return ai_result
 
 

@@ -15,6 +15,7 @@ class JobBase(BaseModel):
     job_status: JobStatus
     date_applied: Optional[date] = None
     average_score: Optional[float] = None
+    starred: Optional[bool] = False
 
 
 class JobCreate(JobBase):
@@ -34,6 +35,7 @@ class JobUpdate(BaseModel):
     date_applied: Optional[date] = None
     average_score: Optional[float] = None
     job_desc: Optional[str] = None
+    starred: Optional[bool] = None
 
     @field_validator('job_id', 'interest_level', mode='before')
     @classmethod
@@ -69,6 +71,7 @@ class Job(JobBase):
     start_date: Optional[date] = None
     start_time: Optional[time] = None
     end_time: Optional[time] = None
+    outcome_score: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -78,6 +81,7 @@ class JobList(BaseModel):
     job_id: int
     company: str
     job_title: str
+    starred: Optional[bool] = None
 
     class Config:
         from_attributes = True

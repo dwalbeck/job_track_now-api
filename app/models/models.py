@@ -206,6 +206,7 @@ class Job(Base):
     date_applied = Column(Date)
     last_activity = Column(Date, server_default=func.current_date())
     job_active = Column(Boolean, default=True)
+    starred = Column(Boolean, default=False)
     resume_id = Column(Integer, ForeignKey("resume.resume_id", ondelete="SET NULL"))
     cover_id = Column(Integer, ForeignKey("cover_letter.cover_id", ondelete="SET NULL"))
     job_created = Column(DateTime(timezone=False), server_default=func.current_timestamp())

@@ -27,18 +27,36 @@ async def get_all_jobs(
 
     logger.debug("Fetching all active jobs", user_id=user_id)
 
-    # Use raw SQL to include calendar data from next upcoming appointment
-    # Include same-day appointments regardless of time (for post-interview scoring prompts)
+    # Use raw SQL to include calendar data from the most relevant appointment.
+    # Priority 0 (upcoming): future date, or today with start_time >= now  -> pick earliest
+    # Priority 1 (past today): today with start_time < now                 -> pick most recent
+    # NULL start_time is treated as 23:59:59 so all-day events stay "upcoming" all day.
     query = text("""
-        SELECT c.calendar_id, c.start_date, c.start_time, c.end_time, j.*
+        SELECT c.calendar_id, c.start_date, c.start_time, c.end_time, c.outcome_score, j.*
         FROM job j
             LEFT JOIN LATERAL (
-                SELECT start_date, start_time, end_time, calendar_id
+                SELECT start_date, start_time, end_time, calendar_id, outcome_score
                 FROM calendar c_inner
-                WHERE c_inner.job_id=j.job_id
+                WHERE c_inner.job_id = j.job_id
                     AND c_inner.user_id = :user_id
                     AND c_inner.start_date >= CURRENT_DATE
-                ORDER BY start_date ASC, start_time ASC
+                ORDER BY
+                    CASE
+                        WHEN c_inner.start_date > CURRENT_DATE
+                             OR (c_inner.start_date = CURRENT_DATE
+                                 AND COALESCE(c_inner.start_time, '23:59:59'::time) >= LOCALTIME)
+                        THEN 0
+                        ELSE 1
+                    END ASC,
+                    CASE
+                        WHEN c_inner.start_date > CURRENT_DATE
+                             OR (c_inner.start_date = CURRENT_DATE
+                                 AND COALESCE(c_inner.start_time, '23:59:59'::time) >= LOCALTIME)
+                        THEN  EXTRACT(EPOCH FROM (c_inner.start_date::timestamp
+                                  + COALESCE(c_inner.start_time, '23:59:59'::time)))
+                        ELSE -EXTRACT(EPOCH FROM (c_inner.start_date::timestamp
+                                  + COALESCE(c_inner.start_time, '23:59:59'::time)))
+                    END ASC
                 LIMIT 1
             ) AS c ON TRUE
         WHERE j.job_active = true AND j.user_id = :user_id
@@ -91,7 +109,7 @@ async def get_job_list(
 
     logger.debug("Fetching job list for dropdown", user_id=user_id)
 
-    jobs = db.query(Job.job_id, Job.company, Job.job_title).filter(
+    jobs = db.query(Job.job_id, Job.company, Job.job_title, Job.starred).filter(
         Job.job_active == True,
         Job.user_id == user_id
     ).order_by(
@@ -101,7 +119,7 @@ async def get_job_list(
 
     logger.log_database_operation("SELECT", "jobs")
     logger.debug(f"Job list retrieved", count=len(jobs), user_id=user_id)
-    return [{"job_id": job.job_id, "company": job.company, "job_title": job.job_title} for job in jobs]
+    return [{"job_id": job.job_id, "company": job.company, "job_title": job.job_title, "starred": job.starred} for job in jobs]
 
 
 @router.get("/job/{job_id}")

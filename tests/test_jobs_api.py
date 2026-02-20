@@ -24,11 +24,11 @@ class TestGetAllJobs:
         user_id = get_test_user_id(test_db)
         # Create test jobs
         test_db.execute(text("""
-            INSERT INTO job (user_id, company, job_title, job_status, job_active, last_activity, job_directory, average_score, interest_level)
+            INSERT INTO job (user_id, company, job_title, job_status, job_active, last_activity, job_directory, average_score, interest_level, starred)
             VALUES
-                (:user_id, 'Google', 'Software Engineer', 'applied', true, '2025-01-10', 'google_software_engineer', 5, 5),
-                (:user_id, 'Microsoft', 'Senior Developer', 'interviewing', true, '2025-01-15', 'microsoft_senior_developer', 5, 5),
-                (:user_id, 'Amazon', 'Tech Lead', 'applied', true, '2025-01-05', 'amazon_tech_lead', 5, 5)
+                (:user_id, 'Google', 'Software Engineer', 'applied', true, '2025-01-10', 'google_software_engineer', 5, 5, false),
+                (:user_id, 'Microsoft', 'Senior Developer', 'interviewing', true, '2025-01-15', 'microsoft_senior_developer', 5, 5, true),
+                (:user_id, 'Amazon', 'Tech Lead', 'applied', true, '2025-01-05', 'amazon_tech_lead', 5, 5, false)
         """), {"user_id": user_id})
         test_db.commit()
 
@@ -42,6 +42,9 @@ class TestGetAllJobs:
         assert jobs[0]['company'] == 'Microsoft'
         assert jobs[1]['company'] == 'Google'
         assert jobs[2]['company'] == 'Amazon'
+        # Verify starred field is present
+        assert jobs[0]['starred'] == True
+        assert jobs[1]['starred'] == False
         # Verify calendar fields are present (should be None without appointments)
         assert 'calendar_id' in jobs[0]
         assert 'start_date' in jobs[0]
@@ -150,11 +153,11 @@ class TestGetJobList:
         user_id = get_test_user_id(test_db)
         # Create test jobs with different dates
         test_db.execute(text("""
-            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory, last_activity, date_applied)
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory, last_activity, date_applied, starred)
             VALUES
-                (1, :user_id, 'Apple', 'iOS Developer', 'applied', true, 'apple_ios_developer', '2025-01-10', '2025-01-10'),
-                (2, :user_id, 'Facebook', 'Backend Engineer', 'interviewing', true, 'facebook_backend_engineer', '2025-01-15', '2025-01-14'),
-                (3, :user_id, 'Netflix', 'DevOps Engineer', 'applied', true, 'netflix_devops_engineer', '2025-01-05', '2025-01-05')
+                (1, :user_id, 'Apple', 'iOS Developer', 'applied', true, 'apple_ios_developer', '2025-01-10', '2025-01-10', false),
+                (2, :user_id, 'Facebook', 'Backend Engineer', 'interviewing', true, 'facebook_backend_engineer', '2025-01-15', '2025-01-14', true),
+                (3, :user_id, 'Netflix', 'DevOps Engineer', 'applied', true, 'netflix_devops_engineer', '2025-01-05', '2025-01-05', false)
         """), {"user_id": user_id})
         test_db.commit()
 
@@ -168,6 +171,8 @@ class TestGetJobList:
         assert jobs[0]['job_id'] == 2
         assert jobs[0]['company'] == 'Facebook'
         assert jobs[0]['job_title'] == 'Backend Engineer'
+        assert jobs[0]['starred'] == True
+        assert 'starred' in jobs[1]
 
     def test_get_job_list_excludes_inactive(self, client, test_db):
         """Test that job list excludes inactive jobs."""
@@ -279,10 +284,52 @@ class TestCreateOrUpdateJob:
         assert job.job_status == "applied"
         assert job.interest_level == 9
         assert job.job_active == True
+        assert job.starred == False
 
         # Verify job_detail was created
         detail = test_db.execute(text(f"SELECT * FROM job_detail WHERE job_id = {data['job_id']}")).first()
         assert detail.job_desc == "Build payment systems"
+
+    @patch('app.utils.job_helpers.calc_avg_score')
+    def test_create_job_starred(self, mock_calc_avg, client, test_db):
+        """Test creating a new starred job."""
+        mock_calc_avg.return_value = None
+
+        job_data = {
+            "company": "Starred Co",
+            "job_title": "Dream Job",
+            "job_status": "applied",
+            "interest_level": 10,
+            "starred": True
+        }
+
+        response = client.post("/v1/job", json=job_data)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data['status'] == 'success'
+
+        job = test_db.execute(text(f"SELECT * FROM job WHERE job_id = {data['job_id']}")).first()
+        assert job.starred == True
+
+    @patch('app.utils.job_helpers.calc_avg_score')
+    def test_update_job_starred(self, mock_calc_avg, client, test_db):
+        """Test toggling starred on an existing job."""
+        mock_calc_avg.return_value = None
+        user_id = get_test_user_id(test_db)
+
+        test_db.execute(text("""
+            INSERT INTO job (job_id, user_id, company, job_title, job_status, job_active, job_directory, starred)
+            VALUES (1, :user_id, 'Star Co', 'Engineer', 'applied', true, 'star_co_engineer', false)
+        """), {"user_id": user_id})
+        test_db.commit()
+
+        response = client.post("/v1/job", json={"job_id": 1, "starred": True})
+
+        assert response.status_code == 200
+
+        job = test_db.execute(text("SELECT starred FROM job WHERE job_id = 1")).first()
+        assert job.starred == True
 
     @patch('app.utils.job_helpers.calc_avg_score')
     def test_update_job_success(self, mock_calc_avg, client, test_db):
