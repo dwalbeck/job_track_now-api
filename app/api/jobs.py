@@ -28,8 +28,10 @@ async def get_all_jobs(
     logger.debug("Fetching all active jobs", user_id=user_id)
 
     # Use raw SQL to include calendar data from the most relevant appointment.
-    # Priority 0 (upcoming): future date, or today with start_time >= now  -> pick earliest
-    # Priority 1 (past today): today with start_time < now                 -> pick most recent
+    # Today's appointments always take priority over future dates (so the card shows time, not date).
+    # Within today: group 0 = upcoming (time >= now, pick earliest),
+    #               group 1 = past     (time <  now, pick most recent).
+    # Future dates (group 2) only surface when no today appointment exists.
     # NULL start_time is treated as 23:59:59 so all-day events stay "upcoming" all day.
     query = text("""
         SELECT c.calendar_id, c.start_date, c.start_time, c.end_time, c.outcome_score, j.*
@@ -42,20 +44,21 @@ async def get_all_jobs(
                     AND c_inner.start_date >= CURRENT_DATE
                 ORDER BY
                     CASE
-                        WHEN c_inner.start_date > CURRENT_DATE
-                             OR (c_inner.start_date = CURRENT_DATE
-                                 AND COALESCE(c_inner.start_time, '23:59:59'::time) >= LOCALTIME)
+                        WHEN c_inner.start_date = CURRENT_DATE
+                             AND COALESCE(c_inner.start_time, '23:59:59'::time) >= LOCALTIME
                         THEN 0
-                        ELSE 1
+                        WHEN c_inner.start_date = CURRENT_DATE
+                        THEN 1
+                        ELSE 2
                     END ASC,
                     CASE
-                        WHEN c_inner.start_date > CURRENT_DATE
-                             OR (c_inner.start_date = CURRENT_DATE
-                                 AND COALESCE(c_inner.start_time, '23:59:59'::time) >= LOCALTIME)
-                        THEN  EXTRACT(EPOCH FROM (c_inner.start_date::timestamp
-                                  + COALESCE(c_inner.start_time, '23:59:59'::time)))
-                        ELSE -EXTRACT(EPOCH FROM (c_inner.start_date::timestamp
-                                  + COALESCE(c_inner.start_time, '23:59:59'::time)))
+                        WHEN c_inner.start_date = CURRENT_DATE
+                             AND COALESCE(c_inner.start_time, '23:59:59'::time) >= LOCALTIME
+                        THEN  EXTRACT(EPOCH FROM COALESCE(c_inner.start_time, '23:59:59'::time))
+                        WHEN c_inner.start_date = CURRENT_DATE
+                        THEN -EXTRACT(EPOCH FROM COALESCE(c_inner.start_time, '23:59:59'::time))
+                        ELSE  EXTRACT(EPOCH FROM (c_inner.start_date::timestamp
+                                  + COALESCE(c_inner.start_time, '00:00:00'::time)))
                     END ASC
                 LIMIT 1
             ) AS c ON TRUE
